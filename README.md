@@ -181,7 +181,7 @@ This project is licensed under the MIT License – see the [LICENSE](LICENSE) fi
 Software engineer yang fokus pada algoritma pencarian dan visualisasi data. Menciptakan File Content Search Pro untuk menyederhanakan pencarian informasi dari dokumen digital secara cepat dan efektif.
 
 * 🔗 [GitHub](https://github.com/Xnuvers007)
-* 🌐 [Website](#)
+* 🌐 [Website](https://mykingbee.blogspot.com/)
 
 ---
 
