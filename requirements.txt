@@ -1,0 +1,7 @@
+PyMuPDF
+python-docx
+matplotlib
+pandas
+pillow
+numpy
+webbrowser-open
