@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     tags:
-      - "v*"
+      - "V*"
 
 permissions:
   contents: write
@@ -74,6 +74,7 @@ jobs:
           macos-app-name: File Search
           macos-app-icon: assets/search_icon.ico
           linux-icon: assets/search_icon.ico
+          extra-options: --jobs=6 --msvcflags="/Zm500"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
