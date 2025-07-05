@@ -5,7 +5,7 @@ name: PyInstaller Build and Release
 on:
   push:
     tags:
-      - "v*" # Jalankan hanya saat ada tag baru (misal: v1.0, v2.5.1)
+      - "V*" # Jalankan hanya saat ada tag baru (misal: v1.0, v2.5.1)
   workflow_dispatch: # Memungkinkan untuk menjalankan manual dari tab Actions
 
 jobs:
