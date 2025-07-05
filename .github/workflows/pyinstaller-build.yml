@@ -1,0 +1,124 @@
+# .github/workflows/pyinstaller-build.yml
+
+name: PyInstaller Build and Release
+
+on:
+  push:
+    tags:
+      - "v*" # Jalankan hanya saat ada tag baru (misal: v1.0, v2.5.1)
+  workflow_dispatch: # Memungkinkan untuk menjalankan manual dari tab Actions
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    steps:
+      - name: 1. Check-out repository
+        uses: actions/checkout@v4
+
+      - name: 2. Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # Sesuaikan dengan versi Python Anda
+          cache: "pip"
+
+      - name: 3. Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller # Instal PyInstaller di runner
+
+      - name: 4. Set up UPX for compression (Optional)
+        if: matrix.os == 'windows-latest' || matrix.os == 'ubuntu-latest'
+        uses: upx/setup-upx@v2
+        with:
+          version: 'latest'
+
+      - name: 5. Create .spec file
+        run: |
+          pyinstaller --windowed --onefile --name "FileSearchPro" --icon "assets/search_icon.ico" main.py
+        
+      - name: 6. Modify .spec file for robustness
+        shell: bash
+        run: |
+          # Perintah ini menambahkan hiddenimports dan data ke file .spec
+          # Ini cara yang lebih stabil daripada menggunakan argumen command line yang panjang
+          SPEC_FILE="FileSearchPro.spec"
+
+          # Tambahkan hidden imports
+          sed -i.bak "s/hiddenimports=\[],/hiddenimports=[\
+              'pandas._libs.tslibs.base',\
+              'pandas._libs.tslibs.np_datetime',\
+              'pandas._libs.tslibs.timedeltas',\
+              'matplotlib.backends.backend_tkagg',\
+              'sklearn.utils._cython_blas',\
+              'PIL._tkinter_finder',\
+              'pymupdf.core',\
+          ],/" $SPEC_FILE
+
+          # Tambahkan folder data
+          sed -i.bak "s/datas=\[],/datas=[\
+              ('app', 'app'),\
+              ('assets', 'assets')\
+          ],/" $SPEC_FILE
+
+          # Tampilkan isi file spec untuk verifikasi
+          echo "--- Modified $SPEC_FILE content ---"
+          cat $SPEC_FILE
+          echo "-----------------------------------"
+
+      - name: 7. Build Executable with PyInstaller
+        run: |
+          pyinstaller --noconfirm --clean FileSearchPro.spec
+
+      - name: 8. Prepare Artifacts
+        shell: bash
+        run: |
+          # Tentukan nama file output berdasarkan OS
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            ARTIFACT_NAME="File-Search-Pro-Windows.exe"
+            mv dist/FileSearchPro.exe "dist/$ARTIFACT_NAME"
+          elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            ARTIFACT_NAME="File-Search-Pro-macOS"
+            mv dist/FileSearchPro "dist/$ARTIFACT_NAME"
+          else
+            ARTIFACT_NAME="File-Search-Pro-Linux"
+            mv dist/FileSearchPro "dist/$ARTIFACT_NAME"
+          fi
+          echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
+
+      - name: 9. Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: dist/${{ env.ARTIFACT_NAME }}
+
+  release:
+    name: Create GitHub Release
+    needs: build # Jalankan hanya setelah semua job 'build' selesai
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Izin untuk membuat rilis
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            New release of File Content Search Pro.
+            Download the appropriate version for your operating system below.
+          files: |
+            artifacts/File-Search-Pro-Windows.exe/*
+            artifacts/File-Search-Pro-macOS/*
+            artifacts/File-Search-Pro-Linux/*
