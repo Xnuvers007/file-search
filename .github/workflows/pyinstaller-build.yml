@@ -47,6 +47,7 @@ jobs:
         run: brew install upx
 
       - name: 6. Build executable with PyInstaller using UPX
+        shell: bash
         run: |
           pyinstaller --noconfirm --clean --onefile --windowed \
             --name FileSearchPro \
