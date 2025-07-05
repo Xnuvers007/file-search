@@ -63,8 +63,8 @@ jobs:
           output-file: ${{ runner.os }}-file_search-v${{ steps.get_version.outputs.version }}
           file-version: ${{ steps.get_version.outputs.version }}
           product-version: ${{ steps.get_version.outputs.version }}
-          copyright: decryptable
-          company-name: decryptable
+          copyright: xnuvers007
+          company-name: xnuvers007
           windows-console-mode: disable
           windows-uac-admin: true
           windows-icon-from-ico: assets/search_icon.ico
