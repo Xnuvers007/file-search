@@ -90,6 +90,10 @@ Dashboard analitik memberikan insight tambahan dari hasil pencarian Anda:
 
 ---
 
+https://github.com/user-attachments/assets/82feb08a-e10e-4abf-85b7-adc54fc596d1
+
+
+
 ## 📥 Instalasi
 
 ### Prasyarat
