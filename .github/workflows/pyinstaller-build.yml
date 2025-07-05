@@ -34,7 +34,7 @@ jobs:
 
       - name: 4. Set up UPX for compression (Optional)
         if: matrix.os == 'windows-latest' || matrix.os == 'ubuntu-latest'
-        uses: upx/setup-upx@v2
+        uses: crazy-max/ghaction-upx@v3
         with:
           version: 'latest'
 
