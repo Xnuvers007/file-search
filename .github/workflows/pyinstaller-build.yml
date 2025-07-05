@@ -30,68 +30,109 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller # Instal PyInstaller di runner
+          # Pastikan pyinstaller dan scikit-learn (untuk hooks numpy) terinstal
+          pip install pyinstaller scikit-learn
 
-      - name: 4. Set up UPX for compression (Optional)
-        if: matrix.os == 'windows-latest' || matrix.os == 'ubuntu-latest'
+      - name: 4. Extract Version from Tag
+        id: get_version
+        shell: bash
+        run: |
+          # Menghapus 'v' dari nama tag, misal: v1.3.0 -> 1.3.0
+          echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+      - name: 5. Create .spec file with correct content
+        shell: bash
+        run: |
+          cat << EOF > main.spec
+          # -*- mode: python ; coding: utf-8 -*-
+          
+          a = Analysis(
+              ['main.py'],
+              pathex=[],
+              binaries=[],
+              datas=[
+                  ('app', 'app'),
+                  ('assets', 'assets')
+              ],
+              hiddenimports=[
+                  'pandas._libs.tslibs.base',
+                  'pandas._libs.tslibs.np_datetime',
+                  'pandas._libs.tslibs.timedeltas',
+                  'matplotlib.backends.backend_tkagg',
+                  'sklearn.utils._cython_blas',
+                  'PIL._tkinter_finder',
+                  'pymupdf.core'
+              ],
+              hookspath=[],
+              hooksconfig={},
+              runtime_hooks=[],
+              excludes=['pytest', 'doctest', 'unittest', 'PyQt5', 'PyQt6', 'wx'],
+              noarchive=False,
+          )
+          pyz = PYZ(a.pyz, a.scripts, a.binaries)
+          
+          exe = EXE(
+              pyz,
+              a.scripts,
+              [],
+              exclude_binaries=True,
+              name='FileSearchPro',
+              debug=False,
+              bootloader_ignore_signals=False,
+              strip=False,
+              upx=True,
+              runtime_tmpdir=None,
+              console=False,
+              icon='assets/search_icon.ico',
+          )
+          
+          coll = COLLECT(
+              exe,
+              a.binaries,
+              a.zipfiles,
+              a.datas,
+              strip=False,
+              upx=True,
+              name='FileSearchPro'
+          )
+          EOF
+
+          echo "--- Created main.spec content ---"
+          cat main.spec
+          echo "---------------------------------"
+
+      - name: 6. Build Executable with PyInstaller
+        run: pyinstaller --noconfirm --clean --onefile main.spec
+
+      - name: 7. Set up UPX for compression
         uses: crazy-max/ghaction-upx@v3
         with:
-          version: 'latest'
+          version: latest
 
-      - name: 5. Create .spec file
+      - name: 8. Compress the executable with UPX
+        if: matrix.os != 'macos-latest' # UPX sering bermasalah di macOS runner
         run: |
-          pyinstaller --windowed --onefile --name "FileSearchPro" --icon "assets/search_icon.ico" main.py
-        
-      - name: 6. Modify .spec file for robustness
+          ls -R dist/
+          upx --best --lzma dist/FileSearchPro*
+
+      - name: 9. Prepare Artifacts
         shell: bash
         run: |
-          # Perintah ini menambahkan hiddenimports dan data ke file .spec
-          # Ini cara yang lebih stabil daripada menggunakan argumen command line yang panjang
-          SPEC_FILE="FileSearchPro.spec"
-
-          # Tambahkan hidden imports
-          sed -i.bak "s/hiddenimports=\[],/hiddenimports=[\
-              'pandas._libs.tslibs.base',\
-              'pandas._libs.tslibs.np_datetime',\
-              'pandas._libs.tslibs.timedeltas',\
-              'matplotlib.backends.backend_tkagg',\
-              'sklearn.utils._cython_blas',\
-              'PIL._tkinter_finder',\
-              'pymupdf.core',\
-          ],/" $SPEC_FILE
-
-          # Tambahkan folder data
-          sed -i.bak "s/datas=\[],/datas=[\
-              ('app', 'app'),\
-              ('assets', 'assets')\
-          ],/" $SPEC_FILE
-
-          # Tampilkan isi file spec untuk verifikasi
-          echo "--- Modified $SPEC_FILE content ---"
-          cat $SPEC_FILE
-          echo "-----------------------------------"
-
-      - name: 7. Build Executable with PyInstaller
-        run: |
-          pyinstaller --noconfirm --clean FileSearchPro.spec
-
-      - name: 8. Prepare Artifacts
-        shell: bash
-        run: |
-          # Tentukan nama file output berdasarkan OS
+          # Tentukan nama file output berdasarkan OS dan versi
+          VERSION="${{ env.VERSION }}"
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            ARTIFACT_NAME="File-Search-Pro-Windows.exe"
+            ARTIFACT_NAME="File-Search-Pro-v${VERSION}-Windows-x64.exe"
             mv dist/FileSearchPro.exe "dist/$ARTIFACT_NAME"
           elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-            ARTIFACT_NAME="File-Search-Pro-macOS"
+            ARTIFACT_NAME="File-Search-Pro-v${VERSION}-macOS"
             mv dist/FileSearchPro "dist/$ARTIFACT_NAME"
           else
-            ARTIFACT_NAME="File-Search-Pro-Linux"
+            ARTIFACT_NAME="File-Search-Pro-v${VERSION}-Linux-x64"
             mv dist/FileSearchPro "dist/$ARTIFACT_NAME"
           fi
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
 
-      - name: 9. Upload Artifact
+      - name: 10. Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
@@ -119,6 +160,4 @@ jobs:
             New release of File Content Search Pro.
             Download the appropriate version for your operating system below.
           files: |
-            artifacts/File-Search-Pro-Windows.exe/*
-            artifacts/File-Search-Pro-macOS/*
-            artifacts/File-Search-Pro-Linux/*
+            artifacts/*/*
