@@ -1,12 +1,10 @@
-# .github/workflows/pyinstaller-build.yml
-
 name: PyInstaller Build and Release
 
 on:
   push:
     tags:
-      - "V*" # Jalankan hanya saat ada tag baru (misal: v1.0, v2.5.1)
-  workflow_dispatch: # Memungkinkan untuk menjalankan manual dari tab Actions
+      - "V*" # Menjalankan saat push tag seperti v1.0.0
+  workflow_dispatch:
 
 jobs:
   build:
@@ -17,35 +15,37 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
 
     steps:
-      - name: 1. Check-out repository
+      - name: 1. Checkout repository
         uses: actions/checkout@v4
 
       - name: 2. Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12" # Sesuaikan dengan versi Python Anda
+          python-version: "3.12"
           cache: "pip"
 
-      - name: 3. Install Dependencies
+      - name: 3. Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          # Pastikan pyinstaller dan scikit-learn (untuk hooks numpy) terinstal
           pip install pyinstaller scikit-learn
 
-      - name: 4. Extract Version from Tag
+      - name: 4. Extract version from tag
         id: get_version
         shell: bash
-        run: |
-          # Menghapus 'v' dari nama tag, misal: v1.3.0 -> 1.3.0
-          echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
 
-      - name: 5. Create .spec file with correct content
+      - name: 5. Set up UPX (used during build)
+        uses: crazy-max/ghaction-upx@v3
+        with:
+          version: latest
+
+      - name: 6. Generate .spec file
         shell: bash
         run: |
-          cat << EOF > main.spec
+          cat << 'EOF' > main.spec
           # -*- mode: python ; coding: utf-8 -*-
-          
+
           a = Analysis(
               ['main.py'],
               pathex=[],
@@ -69,8 +69,8 @@ jobs:
               excludes=['pytest', 'doctest', 'unittest', 'PyQt5', 'PyQt6', 'wx'],
               noarchive=False,
           )
-          pyz = PYZ(a.pyz, a.scripts, a.binaries)
-          
+          pyz = PYZ(a.pure, a.zipped_data, cipher=None)
+
           exe = EXE(
               pyz,
               a.scripts,
@@ -85,7 +85,7 @@ jobs:
               console=False,
               icon='assets/search_icon.ico',
           )
-          
+
           coll = COLLECT(
               exe,
               a.binaries,
@@ -97,28 +97,12 @@ jobs:
           )
           EOF
 
-          echo "--- Created main.spec content ---"
-          cat main.spec
-          echo "---------------------------------"
+      - name: 7. Build executable with PyInstaller using UPX
+        run: pyinstaller --noconfirm --clean --upx-dir=/usr/local/bin main.spec
 
-      - name: 6. Build Executable with PyInstaller
-        run: pyinstaller --noconfirm --clean --onefile main.spec
-
-      - name: 7. Set up UPX for compression
-        uses: crazy-max/ghaction-upx@v3
-        with:
-          version: latest
-
-      - name: 8. Compress the executable with UPX
-        if: matrix.os != 'macos-latest' # UPX sering bermasalah di macOS runner
-        run: |
-          ls -R dist/
-          upx --best --lzma dist/FileSearchPro*
-
-      - name: 9. Prepare Artifacts
+      - name: 8. Rename output file
         shell: bash
         run: |
-          # Tentukan nama file output berdasarkan OS dan versi
           VERSION="${{ env.VERSION }}"
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             ARTIFACT_NAME="File-Search-Pro-v${VERSION}-Windows-x64.exe"
@@ -132,7 +116,7 @@ jobs:
           fi
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
 
-      - name: 10. Upload Artifact
+      - name: 9. Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
@@ -140,24 +124,28 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: build # Jalankan hanya setelah semua job 'build' selesai
+    needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Izin untuk membuat rilis
+      contents: write
 
     steps:
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
 
-      - name: Create Release and Upload Assets
+      - name: Create GitHub release and upload assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: |
-            New release of File Content Search Pro.
-            Download the appropriate version for your operating system below.
-          files: |
-            artifacts/*/*
+            🎉 New release of **File Content Search Pro**
+            
+            ✅ Built with PyInstaller  
+            ✅ Optimized using UPX  
+            ✅ Available for Windows, macOS, and Linux
+            
+            Download the appropriate version for your OS below.
+          files: artifacts/*/*
