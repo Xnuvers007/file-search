@@ -5,3 +5,8 @@ pandas
 pillow
 numpy
 webbrowser-open
+imageio
+nuitka
+ordered-set
+scikit-learn
+zstandard
