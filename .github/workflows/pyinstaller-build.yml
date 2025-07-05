@@ -28,7 +28,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller scikit-learn
+          pip install pyinstaller scikit-learn pymupdf
 
       - name: 4. Extract version from tag
         id: get_version
