@@ -56,7 +56,7 @@ jobs:
           nuitka-version: main
           script-name: main.py
           mode: onefile
-          enable-plugins: tk-inter,pyside6,numpy,pandas,matplotlib
+          enable-plugins: tk-inter,pyside6,numpy,matplotlib
           enable-console: false
           product-name: File Search
           file-description: Solusi Pencarian Konten File Terkemuka dengan Analitik Terintegrasi
