@@ -9,6 +9,7 @@
     <a href="#-panduan-penggunaan">Getting Started</a> • 
     <a href="#-instalasi">Installation</a> • 
     <a href="#-opsi-tema">Customization</a> • 
+    <a href="#video">Video</a> • 
     <a href="#-teknologi-unggulan">Technical</a> • 
     <a href="#-kontribusi">Contribution</a> • 
     <a href="#-author">Author</a>
@@ -90,9 +91,11 @@ Dashboard analitik memberikan insight tambahan dari hasil pencarian Anda:
 
 ---
 
+## video
+
 https://github.com/user-attachments/assets/82feb08a-e10e-4abf-85b7-adc54fc596d1
 
-
+---
 
 ## 📥 Instalasi
 
