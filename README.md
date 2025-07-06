@@ -4,14 +4,14 @@
   <p><strong>🔍 Solusi Pencarian Konten File Terkemuka dengan Analitik Terintegrasi</strong></p>
 
   <p>
-    <a href="#fitur">Fitur</a> • 
-    <a href="#dashboard-analitik-terintegrasi">Analytics</a> • 
-    <a href="#panduan-penggunaan">Getting Started</a> • 
-    <a href="#instalasi">Installation</a> • 
-    <a href="#🎭-opsi-tema">Customization</a> • 
-    <a href="#💻-teknologi-unggulan">Technical</a> • 
-    <a href="#📝-kontribusi">Contribution</a> • 
-    <a href="#👤-author">Author</a>
+    <a href="#-fitur">Fitur</a> • 
+    <a href="#-dashboard-analitik-terintegrasi">Analytics</a> • 
+    <a href="#-panduan-penggunaan">Getting Started</a> • 
+    <a href="#-instalasi">Installation</a> • 
+    <a href="#-opsi-tema">Customization</a> • 
+    <a href="#-teknologi-unggulan">Technical</a> • 
+    <a href="#-kontribusi">Contribution</a> • 
+    <a href="#-author">Author</a>
   </p>
 
   <p>
