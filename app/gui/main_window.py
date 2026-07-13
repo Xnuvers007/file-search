@@ -68,6 +68,8 @@ class FileSearchGUI:
         self.regex_var = tk.BooleanVar(value=False)
         self.ocr_var = tk.BooleanVar(value=False)
         self.semantic_var = tk.BooleanVar(value=False)
+        self.archive_var = tk.BooleanVar(value=False)
+        self.fuzzy_var = tk.BooleanVar(value=False)
         self.saved_searches = {}
         self.selected_saved_search_var = tk.StringVar()
         self.max_workers_var = tk.IntVar(value=os.cpu_count() or 4)
@@ -125,6 +127,8 @@ class FileSearchGUI:
         ttk.Checkbutton(options_frame, text="Regex", variable=self.regex_var).pack(side=tk.LEFT)
         ttk.Checkbutton(options_frame, text="OCR (Images)", variable=self.ocr_var).pack(side=tk.LEFT, padx=10)
         ttk.Checkbutton(options_frame, text="Semantic (AI)", variable=self.semantic_var).pack(side=tk.LEFT)
+        ttk.Checkbutton(options_frame, text="Fuzzy", variable=self.fuzzy_var).pack(side=tk.LEFT, padx=10)
+        ttk.Checkbutton(options_frame, text="Archives", variable=self.archive_var).pack(side=tk.LEFT)
         ttk.Label(config_frame, text="Path:", style='Heading.TLabel').grid(row=3, column=0, sticky="w", padx=5, pady=2)
         path_frame = ttk.Frame(config_frame); path_frame.grid(row=4, column=0, columnspan=2, sticky="ew", padx=5, pady=2); path_frame.columnconfigure(0, weight=1)
         self.path_entry = ttk.Entry(path_frame, textvariable=self.search_path_var); self.path_entry.grid(row=0, column=0, sticky="ew")
@@ -155,6 +159,7 @@ class FileSearchGUI:
         self.build_index_button = ttk.Button(control_frame, text="Build Index", command=self.build_index); self.build_index_button.pack(side=tk.LEFT, padx=5)
         self.cancel_button = ttk.Button(control_frame, text="Cancel", command=self.cancel_search, state=tk.DISABLED); self.cancel_button.pack(side=tk.LEFT)
         self.analytics_button = ttk.Button(control_frame, text="Show Analytics", command=self.show_analytics, state=tk.DISABLED); self.analytics_button.pack(side=tk.LEFT, padx=5)
+        self.export_csv_button = ttk.Button(control_frame, text="Export CSV", command=self.export_csv, state=tk.DISABLED); self.export_csv_button.pack(side=tk.LEFT)
         
         saved_search_frame = ttk.Frame(self.left_frame); saved_search_frame.grid(row=3, column=0, pady=5, sticky='w')
         ttk.Label(saved_search_frame, text="Saved Searches:").pack(side=tk.LEFT, padx=(0,5))
@@ -186,8 +191,14 @@ class FileSearchGUI:
         ttk.Button(self.find_frame, text="Find Next", command=self.find_next_in_preview).pack(side=tk.LEFT)
         ttk.Button(self.find_frame, text="Close", command=self.hide_find_bar).pack(side=tk.LEFT, padx=5)
         self.results_menu = tk.Menu(self.root, tearoff=0)
-        self.results_menu.add_command(label="Copy Selected Path(s)", command=self.copy_selected_paths)
         self.results_menu.add_command(label="Open File Location", command=self.open_selected_folder)
+        self.results_menu.add_command(label="Copy Selected Path(s)", command=self.copy_selected_paths)
+        self.results_menu.add_separator()
+        self.results_menu.add_command(label="Move to...", command=self.move_selected)
+        self.results_menu.add_command(label="Copy to...", command=self.copy_selected)
+        self.results_menu.add_command(label="Compress to ZIP", command=self.compress_selected)
+        self.results_menu.add_separator()
+        self.results_menu.add_command(label="Delete Permanently", command=self.delete_selected)
         self.results_tree.bind("<Button-3>", self.show_context_menu)
         status_frame = ttk.Frame(self.root)
         status_frame.pack(side=tk.BOTTOM, fill=tk.X)
@@ -280,6 +291,7 @@ class FileSearchGUI:
             'keyword': self.keyword_var.get().strip(), 'search_paths': search_paths,
             'case_sensitive': self.case_sensitive_var.get(), 'whole_word': self.whole_word_var.get(),
             'regex': self.regex_var.get(), 'ocr': self.ocr_var.get(), 'semantic': self.semantic_var.get(),
+            'archive': self.archive_var.get(), 'fuzzy': self.fuzzy_var.get(),
             'max_workers': self.max_workers_var.get(),
             'ignore_folders': {name.strip() for name in self.ignore_folders_var.get().split(',') if name.strip()},
             'ignore_files': [pat.strip() for pat in self.ignore_files_var.get().split(',') if pat.strip()],
@@ -320,7 +332,9 @@ class FileSearchGUI:
         self.cancel_event.clear() ### PERBAIKAN: Reset event di akhir
         self.progress_bar.stop() # Hentikan animasi loading
         self.search_button.config(state=tk.NORMAL); self.cancel_button.config(state=tk.DISABLED)
-        if self.found_files_count > 0: self.analytics_button.config(state=tk.NORMAL)
+        if self.found_files_count > 0:
+            self.analytics_button.config(state=tk.NORMAL)
+            self.export_csv_button.config(state=tk.NORMAL)
         
         duration = time.time() - self.start_time
         if was_cancelled:
@@ -539,6 +553,89 @@ class FileSearchGUI:
             self._highlight_keyword(self.keyword_var.get())
         self.preview_pane.config(state="disabled")
 
+    # --- File Manager & Export Methods ---
+    def export_csv(self):
+        import csv
+        if not self.results_tree.get_children(): return
+        filepath = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV Files", "*.csv")], title="Export to CSV")
+        if not filepath: return
+        try:
+            with open(filepath, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(["Path", "Size", "Last Modified"])
+                for item in self.results_tree.get_children():
+                    values = self.results_tree.item(item, 'values')
+                    writer.writerow(values)
+            messagebox.showinfo("Export Successful", f"Results exported to {filepath}")
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export: {e}")
+
+    def _get_selected_paths(self):
+        return [self.results_tree.item(item, 'values')[0] for item in self.results_tree.selection()]
+
+    def move_selected(self):
+        import shutil
+        paths = self._get_selected_paths()
+        if not paths: return
+        dest = filedialog.askdirectory(title="Select Destination Folder to Move")
+        if not dest: return
+        moved_count = 0
+        for p in paths:
+            try:
+                shutil.move(p, dest)
+                moved_count += 1
+                for item in self.results_tree.get_children():
+                    if self.results_tree.item(item, 'values')[0] == p:
+                        self.results_tree.delete(item)
+            except Exception as e:
+                print(f"Error moving {p}: {e}")
+        messagebox.showinfo("Move Completed", f"Successfully moved {moved_count} file(s).")
+
+    def copy_selected(self):
+        import shutil
+        paths = self._get_selected_paths()
+        if not paths: return
+        dest = filedialog.askdirectory(title="Select Destination Folder to Copy")
+        if not dest: return
+        copied_count = 0
+        for p in paths:
+            try:
+                shutil.copy2(p, dest)
+                copied_count += 1
+            except Exception as e:
+                print(f"Error copying {p}: {e}")
+        messagebox.showinfo("Copy Completed", f"Successfully copied {copied_count} file(s).")
+
+    def compress_selected(self):
+        import zipfile
+        paths = self._get_selected_paths()
+        if not paths: return
+        dest = filedialog.asksaveasfilename(defaultextension=".zip", filetypes=[("ZIP Files", "*.zip")], title="Save ZIP As")
+        if not dest: return
+        try:
+            with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for p in paths:
+                    zf.write(p, os.path.basename(p))
+            messagebox.showinfo("Compress Completed", f"Successfully compressed {len(paths)} file(s) into {os.path.basename(dest)}.")
+        except Exception as e:
+            messagebox.showerror("Compress Error", f"Failed to compress: {e}")
+
+    def delete_selected(self):
+        paths = self._get_selected_paths()
+        if not paths: return
+        if not messagebox.askyesno("Confirm Delete", f"Are you sure you want to permanently delete {len(paths)} file(s)?\nThis action cannot be undone."): return
+        deleted_count = 0
+        for p in paths:
+            try:
+                os.remove(p)
+                deleted_count += 1
+                for item in self.results_tree.get_children():
+                    if self.results_tree.item(item, 'values')[0] == p:
+                        self.results_tree.delete(item)
+            except Exception as e:
+                print(f"Error deleting {p}: {e}")
+        messagebox.showinfo("Delete Completed", f"Successfully deleted {deleted_count} file(s).")
+
     # --- New UI Methods ---
     def show_find_bar(self, event=None):
         self.find_frame.pack(side=tk.TOP, fill=tk.X, before=self.preview_pane)
@@ -590,6 +687,8 @@ class FileSearchGUI:
             'regex': self.regex_var.get(),
             'ocr': self.ocr_var.get(),
             'semantic': self.semantic_var.get(),
+            'archive': self.archive_var.get(),
+            'fuzzy': self.fuzzy_var.get(),
             'size_filter': self.size_filter_var.get(),
             'size_val': self.size_value_var.get(),
             'size_unit': self.size_unit_var.get(),
@@ -611,6 +710,8 @@ class FileSearchGUI:
             self.regex_var.set(s.get('regex', False))
             self.ocr_var.set(s.get('ocr', False))
             self.semantic_var.set(s.get('semantic', False))
+            self.archive_var.set(s.get('archive', False))
+            self.fuzzy_var.set(s.get('fuzzy', False))
             self.size_filter_var.set(s.get('size_filter', 'any'))
             self.size_value_var.set(s.get('size_val', 0.0))
             self.size_unit_var.set(s.get('size_unit', 'MB'))

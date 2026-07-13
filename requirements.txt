@@ -16,3 +16,5 @@ sentence-transformers
 mutagen
 extract-msg
 EbookLib
+thefuzz
+python-Levenshtein

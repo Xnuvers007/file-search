@@ -218,6 +218,13 @@ class SearchEngine:
                     match = True
             elif self.params.get('regex'):
                 match = bool(re.search(k, c, re.IGNORECASE if not self.params.get('case_sensitive') else 0))
+            elif self.params.get('fuzzy'):
+                try:
+                    from thefuzz import fuzz
+                    if fuzz.partial_ratio(keyword.lower(), content.lower()) >= 80:
+                        match = True
+                except ImportError:
+                    pass
             elif self.params.get('whole_word'):
                 match = bool(re.search(r'\b' + re.escape(k) + r'\b', c))
             elif k in c:
@@ -234,12 +241,22 @@ class SearchEngine:
         ext = os.path.splitext(file_path)[1].lower()
         content = ""
         try:
-            if ext == ".zip":
+            if ext == ".zip" and self.params.get('archive'):
+                import zipfile
                 with zipfile.ZipFile(file_path, 'r') as zf:
                     for name in zf.infolist():
                         if not name.is_dir():
                             try: content += zf.read(name).decode('utf-8', 'ignore') + "\n"
-                            except (zipfile.BadZipFile, UnicodeDecodeError): continue
+                            except Exception: continue
+            elif ext == ".tar" and self.params.get('archive'):
+                import tarfile
+                with tarfile.open(file_path, 'r:*') as tf:
+                    for member in tf.getmembers():
+                        if member.isreg():
+                            f = tf.extractfile(member)
+                            if f:
+                                try: content += f.read().decode('utf-8', 'ignore') + "\n"
+                                except Exception: continue
             elif ext == ".pdf" and fitz:
                 with fitz.open(file_path) as doc: content = "".join(page.get_text() for page in doc)
                 if self.params.get('ocr') and pytesseract and not content.strip():
