@@ -41,6 +41,7 @@ jobs:
         uses: crazy-max/ghaction-upx@v3
         with:
           version: latest
+          install-only: true
 
       # ✅ UPX setup for macOS
       - name: 5b. Install UPX on macOS
@@ -53,7 +54,6 @@ jobs:
           pyinstaller --noconfirm --clean --onefile --windowed \
             --name FileSearchPro \
             --icon=assets/search_icon.ico \
-            --upx-dir=/usr/local/bin \
             main.py
 
       - name: 7. Debug dist folder (optional)
