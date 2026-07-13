@@ -19,7 +19,7 @@
     <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue" alt="Platform">
     <img src="https://img.shields.io/badge/Python-3.7+-blue" alt="Python">
     <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
-    <img src="https://img.shields.io/badge/Version-2.5.0-orange" alt="Version">
+    <img src="https://img.shields.io/badge/Version-2.6.0-orange" alt="Version">
   </p>
 </div>
 
@@ -28,6 +28,15 @@
 ## 🌟 Ringkasan
 
 **File Content Search Pro** adalah aplikasi desktop canggih yang dirancang untuk profesional dan pengguna yang membutuhkan kemampuan pencarian konten file yang komprehensif. Dibangun dengan Python dan Tkinter, aplikasi ini menggabungkan kecepatan pencarian yang luar biasa dengan analitik data yang mendalam, memungkinkan Anda menemukan, menganalisis, dan memvisualisasikan informasi penting dari berbagai jenis file dengan cepat dan efisien.
+
+---
+
+## 🚀 Yang Baru di V2.6.0 (Production-Ready Release)
+
+- **Arsitektur Producer-Consumer AI:** Pemisahan tugas pembacaan file *(I/O Multi-threading)* dengan eksekusi *AI/OCR (Semantic Search)* ke antrean khusus (*worker queue*). Menghilangkan risiko *freeze* atau RAM penuh 100% saat memindai ribuan file dengan mode AI.
+- **Optimasi Memori & Intelligent Chunking:** Memotong teks secara semantik menggunakan `textwrap` tanpa memecah kata di tengah, serta menerapkan batas memori (*Anti-OOM*) khusus untuk pemrosesan AI.
+- **Instalasi Windows Super Cepat (Inno Setup):** Migrasi dari mode portabel (`--onefile`) ke mode instalasi profesional menggunakan Inno Setup (`setup.exe`). Waktu tunggu (*startup*) untuk membuka aplikasi yang tadinya >30 detik kini menjadi **instan**.
+- **Perbaikan Stabilitas:** Sistem hashing direktori yang lebih tangguh (case-insensitive) untuk database *Whoosh Index*, *Safe State Recovery* (Try-Finally) saat proses dibatalkan, dan penggantian error diam-diam dengan *python logging* yang rapi.
 
 ---
 

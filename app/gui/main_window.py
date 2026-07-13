@@ -498,7 +498,7 @@ class FileSearchGUI:
     def show_about(self):
         messagebox.showinfo(
             "About File Content Search Pro",
-            "File Content Search Pro v2.0\n\n"
+            "File Content Search Pro v2.6.0\n\n"
             "A powerful utility for searching file contents across your system.\n\n"
             "Developed by: Xnuvers007 | Indra Dwi A\n\n"
             f"© {datetime.now().year} Xnuvers007 | All rights reserved\n\n"

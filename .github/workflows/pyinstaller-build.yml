@@ -48,31 +48,37 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: brew install upx
 
-      - name: 6. Build executable with PyInstaller using UPX
+      - name: 6. Build with PyInstaller (Folder Mode)
         shell: bash
         run: |
-          pyinstaller --noconfirm --clean --onefile --windowed \
+          pyinstaller --noconfirm --clean --windowed \
             --name FileSearchPro \
             --icon=assets/search_icon.ico \
             main.py
 
-      - name: 7. Debug dist folder (optional)
-        shell: bash
-        run: ls -lh dist/
+      - name: 7. Build Installer using Inno Setup (Windows Only)
+        if: matrix.os == 'windows-latest'
+        shell: cmd
+        run: |
+          iscc installer.iss
 
-      - name: 8. Rename output file
+      - name: 8. Rename output file & Prepare Upload
         shell: bash
         run: |
           VERSION="${{ env.VERSION }}"
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            ARTIFACT_NAME="File-Search-Pro-v${VERSION}-Windows-x64.exe"
-            mv dist/FileSearchPro.exe "dist/$ARTIFACT_NAME"
+            ARTIFACT_NAME="FileSearchPro_Setup_v${VERSION}_Windows_x64.exe"
+            mkdir -p final_dist
+            mv dist_installer/* final_dist/
+            echo "ARTIFACT_PATH=final_dist/*" >> $GITHUB_ENV
           elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
             ARTIFACT_NAME="File-Search-Pro-v${VERSION}-macOS"
             mv dist/FileSearchPro "dist/$ARTIFACT_NAME"
+            echo "ARTIFACT_PATH=dist/${ARTIFACT_NAME}" >> $GITHUB_ENV
           else
             ARTIFACT_NAME="File-Search-Pro-v${VERSION}-Linux-x64"
             mv dist/FileSearchPro "dist/$ARTIFACT_NAME"
+            echo "ARTIFACT_PATH=dist/${ARTIFACT_NAME}" >> $GITHUB_ENV
           fi
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
 
@@ -80,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: dist/${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_PATH }}
 
   release:
     name: Create GitHub Release

@@ -4,6 +4,12 @@ import string
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
+import queue
+import textwrap
+import logging
+import threading
+
+logger = logging.getLogger(__name__)
 
 try:
     import fitz
@@ -63,7 +69,8 @@ class SearchEngine:
 
     def _get_index_dir_for_path(self, search_path):
         import hashlib
-        path_hash = hashlib.md5(search_path.encode('utf-8')).hexdigest()
+        normalized_path = os.path.normpath(search_path).lower()
+        path_hash = hashlib.md5(normalized_path.encode('utf-8')).hexdigest()
         return os.path.join(self.index_dir_base, path_hash)
 
     def build_index_for_path(self, search_path, ignore_folders, ignore_files, progress_callback):
@@ -93,25 +100,28 @@ class SearchEngine:
         if old_cancel is None:
             self.cancel_event = type('obj', (object,), {'is_set': lambda: False})
             
-        all_files = self._collect_files(progress_callback)
-        total = len(all_files)
-        
-        for i, file_path in enumerate(all_files):
-            progress_callback(f"Indexing... {i+1}/{total}")
-            try:
-                content = self._get_file_content(file_path)
-                if content:
-                    stat = os.stat(file_path)
-                    writer.add_document(path=file_path, name=os.path.basename(file_path), content=content, size=stat.st_size, modified=stat.st_mtime)
-            except Exception:
-                continue
-                
-        progress_callback("Committing index...")
-        writer.commit()
-        
-        # Restore state
-        if old_params: self.params = old_params
-        if old_cancel: self.cancel_event = old_cancel
+        try:
+            all_files = self._collect_files(progress_callback)
+            total = len(all_files)
+            
+            for i, file_path in enumerate(all_files):
+                progress_callback(f"Indexing... {i+1}/{total}")
+                try:
+                    content = self._get_file_content(file_path)
+                    if content:
+                        stat = os.stat(file_path)
+                        writer.add_document(path=file_path, name=os.path.basename(file_path), content=content, size=stat.st_size, modified=stat.st_mtime)
+                except Exception as e:
+                    logger.debug(f"Error indexing {file_path}: {e}")
+                    continue
+                    
+            progress_callback("Committing index...")
+            writer.commit()
+            
+        finally:
+            # Restore state
+            if old_params: self.params = old_params
+            if old_cancel: self.cancel_event = old_cancel
 
     def run_search(self, progress_callback, result_callback, finish_callback):
         # 1. Cek apakah ada index untuk path yang dicari
@@ -155,20 +165,55 @@ class SearchEngine:
                 semantic_model = SentenceTransformer('paraphrase-multilingual-mpnet-base-v2')
             self.keyword_embedding = semantic_model.encode(self.params['keyword'], convert_to_tensor=True)
             
-        with ThreadPoolExecutor(max_workers=self.params.get('max_workers', 4)) as executor:
-            future_to_file = {executor.submit(self._process_file, f): f for f in all_files}
+        use_ai_ocr = self.params.get('semantic') or self.params.get('ocr')
+        
+        if use_ai_ocr:
+            ai_queue = queue.Queue()
+            ai_worker_thread = threading.Thread(target=self._ai_worker, args=(ai_queue, progress_callback, result_callback))
+            ai_worker_thread.start()
             
-            total = len(all_files)
-            for i, future in enumerate(as_completed(future_to_file)):
-                if self.cancel_event.is_set():
-                    break
+            with ThreadPoolExecutor(max_workers=self.params.get('max_workers', 4)) as executor:
+                total = len(all_files)
+                for i, file_path in enumerate(all_files):
+                    if self.cancel_event.is_set():
+                        break
+                    progress_callback(f"Reading... {i+1}/{total}")
+                    executor.submit(self._read_and_enqueue, file_path, ai_queue)
+                    
+            ai_queue.put(None) # Sentinel to stop worker
+            ai_worker_thread.join()
+        else:
+            with ThreadPoolExecutor(max_workers=self.params.get('max_workers', 4)) as executor:
+                future_to_file = {executor.submit(self._process_file, f): f for f in all_files}
                 
-                progress_callback(f"Scanning... {i+1}/{total}")
-                result = future.result()
-                if result:
-                    result_callback(result)
+                total = len(all_files)
+                for i, future in enumerate(as_completed(future_to_file)):
+                    if self.cancel_event.is_set():
+                        break
+                    
+                    progress_callback(f"Scanning... {i+1}/{total}")
+                    result = future.result()
+                    if result:
+                        result_callback(result)
         
         finish_callback()
+
+    def _read_and_enqueue(self, file_path, q):
+        if self.cancel_event.is_set(): return
+        content = self._get_file_content(file_path)
+        if content is not None:
+            q.put((file_path, content))
+            
+    def _ai_worker(self, q, progress_callback, result_callback):
+        while not self.cancel_event.is_set():
+            item = q.get()
+            if item is None:
+                break
+            file_path, content = item
+            result = self._process_file_content(file_path, content)
+            if result:
+                result_callback(result)
+            q.task_done()
 
     def _collect_files(self, progress_callback):
         files_to_scan = []
@@ -202,6 +247,9 @@ class SearchEngine:
 
     def _process_file(self, file_path):
         content = self._get_file_content(file_path)
+        return self._process_file_content(file_path, content)
+
+    def _process_file_content(self, file_path, content):
         if content is None: return None
 
         keyword = self.params['keyword']
@@ -210,8 +258,10 @@ class SearchEngine:
         match = False
         try:
             if self.params.get('semantic') and SentenceTransformer is not None:
-                # Basic chunking for long text
-                chunks = [content[i:i+500] for i in range(0, len(content), 500)] if len(content) > 500 else [content]
+                # Limit to first 10,000 characters to prevent OOM
+                c_limit = content[:10000]
+                # Better chunking for long text using textwrap
+                chunks = textwrap.wrap(c_limit, width=500, break_long_words=False) if len(c_limit) > 500 else [c_limit]
                 chunk_embeddings = semantic_model.encode(chunks, convert_to_tensor=True)
                 cos_scores = util.cos_sim(self.keyword_embedding, chunk_embeddings)[0]
                 if max(cos_scores) > 0.65: # Threshold dinaikkan untuk akurasi > 90%
@@ -247,7 +297,9 @@ class SearchEngine:
                     for name in zf.infolist():
                         if not name.is_dir():
                             try: content += zf.read(name).decode('utf-8', 'ignore') + "\n"
-                            except Exception: continue
+                            except Exception as e:
+                                logger.debug(f"Error reading zip entry {name} in {file_path}: {e}")
+                                continue
             elif ext == ".tar" and self.params.get('archive'):
                 import tarfile
                 with tarfile.open(file_path, 'r:*') as tf:
@@ -256,7 +308,9 @@ class SearchEngine:
                             f = tf.extractfile(member)
                             if f:
                                 try: content += f.read().decode('utf-8', 'ignore') + "\n"
-                                except Exception: continue
+                                except Exception as e:
+                                    logger.debug(f"Error reading tar member {member.name} in {file_path}: {e}")
+                                    continue
             elif ext == ".pdf" and fitz:
                 with fitz.open(file_path) as doc: content = "".join(page.get_text() for page in doc)
                 if self.params.get('ocr') and pytesseract and not content.strip():
@@ -306,7 +360,7 @@ class SearchEngine:
                     content = f.read(10*1024*1024) # Read up to 10MB
             return content
         except Exception as e:
-            # print(f"Error reading {file_path}: {e}")
+            logger.debug(f"Error reading {file_path}: {e}")
             return None
 
     def _check_size(self, file_size, filters):
