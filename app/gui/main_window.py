@@ -66,6 +66,10 @@ class FileSearchGUI:
         self.case_sensitive_var = tk.BooleanVar(value=False)
         self.whole_word_var = tk.BooleanVar(value=False)
         self.regex_var = tk.BooleanVar(value=False)
+        self.ocr_var = tk.BooleanVar(value=False)
+        self.semantic_var = tk.BooleanVar(value=False)
+        self.saved_searches = {}
+        self.selected_saved_search_var = tk.StringVar()
         self.max_workers_var = tk.IntVar(value=os.cpu_count() or 4)
         self.save_results_var = tk.BooleanVar(value=True)
         self.size_filter_var = tk.StringVar(value="any")
@@ -119,6 +123,8 @@ class FileSearchGUI:
         ttk.Checkbutton(options_frame, text="Case Sensitive", variable=self.case_sensitive_var).pack(side=tk.LEFT)
         ttk.Checkbutton(options_frame, text="Whole Word", variable=self.whole_word_var).pack(side=tk.LEFT, padx=10)
         ttk.Checkbutton(options_frame, text="Regex", variable=self.regex_var).pack(side=tk.LEFT)
+        ttk.Checkbutton(options_frame, text="OCR (Images)", variable=self.ocr_var).pack(side=tk.LEFT, padx=10)
+        ttk.Checkbutton(options_frame, text="Semantic (AI)", variable=self.semantic_var).pack(side=tk.LEFT)
         ttk.Label(config_frame, text="Path:", style='Heading.TLabel').grid(row=3, column=0, sticky="w", padx=5, pady=2)
         path_frame = ttk.Frame(config_frame); path_frame.grid(row=4, column=0, columnspan=2, sticky="ew", padx=5, pady=2); path_frame.columnconfigure(0, weight=1)
         self.path_entry = ttk.Entry(path_frame, textvariable=self.search_path_var); self.path_entry.grid(row=0, column=0, sticky="ew")
@@ -146,8 +152,17 @@ class FileSearchGUI:
         ttk.Checkbutton(perf_frame, text="Auto-save Results", variable=self.save_results_var).pack(side=tk.LEFT, padx=20)
         control_frame = ttk.Frame(self.left_frame); control_frame.grid(row=2, column=0, pady=10, sticky='w')
         self.search_button = ttk.Button(control_frame, text="Start Search", command=self.start_search); self.search_button.pack(side=tk.LEFT)
-        self.cancel_button = ttk.Button(control_frame, text="Cancel", command=self.cancel_search, state=tk.DISABLED); self.cancel_button.pack(side=tk.LEFT, padx=5)
-        self.analytics_button = ttk.Button(control_frame, text="Show Analytics", command=self.show_analytics, state=tk.DISABLED); self.analytics_button.pack(side=tk.LEFT)
+        self.build_index_button = ttk.Button(control_frame, text="Build Index", command=self.build_index); self.build_index_button.pack(side=tk.LEFT, padx=5)
+        self.cancel_button = ttk.Button(control_frame, text="Cancel", command=self.cancel_search, state=tk.DISABLED); self.cancel_button.pack(side=tk.LEFT)
+        self.analytics_button = ttk.Button(control_frame, text="Show Analytics", command=self.show_analytics, state=tk.DISABLED); self.analytics_button.pack(side=tk.LEFT, padx=5)
+        
+        saved_search_frame = ttk.Frame(self.left_frame); saved_search_frame.grid(row=3, column=0, pady=5, sticky='w')
+        ttk.Label(saved_search_frame, text="Saved Searches:").pack(side=tk.LEFT, padx=(0,5))
+        self.saved_searches_combo = ttk.Combobox(saved_search_frame, textvariable=self.selected_saved_search_var, font=('Segoe UI', 9), state='readonly')
+        self.saved_searches_combo.pack(side=tk.LEFT)
+        self.saved_searches_combo.bind('<<ComboboxSelected>>', self.load_saved_search)
+        ttk.Button(saved_search_frame, text="Save Current", command=self.save_current_search).pack(side=tk.LEFT, padx=5)
+        ttk.Button(saved_search_frame, text="Delete", command=self.delete_saved_search).pack(side=tk.LEFT)
 
         right_v_pane = ttk.PanedWindow(main_h_pane, orient=tk.VERTICAL); main_h_pane.add(right_v_pane, weight=3)
         results_frame_container = ttk.Frame(right_v_pane, padding=(10,0,0,0)); right_v_pane.add(results_frame_container, weight=3)
@@ -162,6 +177,14 @@ class FileSearchGUI:
         preview_container.rowconfigure(0, weight=1); preview_container.columnconfigure(0, weight=1)
         self.preview_pane = scrolledtext.ScrolledText(preview_container, wrap=tk.WORD, state="disabled", font=('Calibri', 10))
         self.preview_pane.grid(row=0, column=0, sticky="nsew")
+        self.preview_pane.bind("<Control-f>", self.show_find_bar)
+        
+        self.find_frame = ttk.Frame(preview_container)
+        self.find_entry = ttk.Entry(self.find_frame, width=30)
+        self.find_entry.pack(side=tk.LEFT, padx=(0,5))
+        self.find_entry.bind("<Return>", self.find_next_in_preview)
+        ttk.Button(self.find_frame, text="Find Next", command=self.find_next_in_preview).pack(side=tk.LEFT)
+        ttk.Button(self.find_frame, text="Close", command=self.hide_find_bar).pack(side=tk.LEFT, padx=5)
         self.results_menu = tk.Menu(self.root, tearoff=0)
         self.results_menu.add_command(label="Copy Selected Path(s)", command=self.copy_selected_paths)
         self.results_menu.add_command(label="Open File Location", command=self.open_selected_folder)
@@ -250,7 +273,8 @@ class FileSearchGUI:
         search_params = {
             'keyword': self.keyword_var.get().strip(), 'search_paths': search_paths,
             'case_sensitive': self.case_sensitive_var.get(), 'whole_word': self.whole_word_var.get(),
-            'regex': self.regex_var.get(), 'max_workers': self.max_workers_var.get(),
+            'regex': self.regex_var.get(), 'ocr': self.ocr_var.get(), 'semantic': self.semantic_var.get(),
+            'max_workers': self.max_workers_var.get(),
             'ignore_folders': {name.strip() for name in self.ignore_folders_var.get().split(',') if name.strip()},
             'ignore_files': [pat.strip() for pat in self.ignore_files_var.get().split(',') if pat.strip()],
             'size_filters': size_filters, 'date_filters': date_filters
@@ -294,8 +318,14 @@ class FileSearchGUI:
         duration = time.time() - self.start_time
         if was_cancelled:
             final_msg = f"Search cancelled. Found {self.found_files_count} file(s) in {duration:.2f}s."
+            messagebox.showinfo("Search Cancelled", final_msg, parent=self.root)
         else:
             final_msg = f"Search complete. Found {self.found_files_count} file(s) in {duration:.2f}s."
+            if self.found_files_count == 0:
+                messagebox.showinfo("Search Complete", "No files found matching your criteria.", parent=self.root)
+            else:
+                messagebox.showinfo("Search Complete", final_msg, parent=self.root)
+            
             if self.save_results_var.get() and self.found_files_count > 0:
                 self.auto_save_results()
                 return # auto_save_results akan mengatur statusnya sendiri
@@ -337,6 +367,11 @@ class FileSearchGUI:
             end_idx = f"{start_idx}+{len(keyword)}c"
             self.preview_pane.tag_add("highlight", start_idx, end_idx)
             start_idx = end_idx
+        
+        # Scroll to first highlight
+        first_match = self.preview_pane.tag_ranges("highlight")
+        if first_match:
+            self.preview_pane.see(first_match[0])
 
     def update_search_history(self, keyword):
         if keyword in self.search_history: self.search_history.remove(keyword)
@@ -386,9 +421,13 @@ class FileSearchGUI:
         self.case_sensitive_var.set(settings.get('case', False))
         self.whole_word_var.set(settings.get('whole', False))
         self.regex_var.set(settings.get('regex', False))
+        self.ocr_var.set(settings.get('ocr', False))
+        self.semantic_var.set(settings.get('semantic', False))
         self.save_results_var.set(settings.get('autosave', True))
         self.ignore_folders_var.set(settings.get('ignore_folders', '.git, .svn, .vscode, .idea, __pycache__, node_modules, venv, env, build, dist'))
         self.ignore_files_var.set(settings.get('ignore_files', '*.log, *.tmp, *.bak'))
+        self.saved_searches = settings.get('saved_searches', {})
+        self.update_saved_searches_combo()
         
         theme_to_load = settings.get('theme', 'Light')
         if theme_to_load == "Custom" and 'custom_theme' in settings:
@@ -402,8 +441,10 @@ class FileSearchGUI:
         settings = {
             'theme': self.selected_theme, 'history': self.search_history,
             'case': self.case_sensitive_var.get(), 'whole': self.whole_word_var.get(), 
-            'regex': self.regex_var.get(), 'autosave': self.save_results_var.get(),
-            'ignore_folders': self.ignore_folders_var.get(), 'ignore_files': self.ignore_files_var.get()
+            'regex': self.regex_var.get(), 'ocr': self.ocr_var.get(), 'semantic': self.semantic_var.get(), 
+            'autosave': self.save_results_var.get(),
+            'ignore_folders': self.ignore_folders_var.get(), 'ignore_files': self.ignore_files_var.get(),
+            'saved_searches': self.saved_searches
         }
         if self.selected_theme == "Custom":
             settings['custom_theme'] = self.current_theme_dict
@@ -490,3 +531,116 @@ class FileSearchGUI:
         if content:
             self._highlight_keyword(self.keyword_var.get())
         self.preview_pane.config(state="disabled")
+
+    # --- New UI Methods ---
+    def show_find_bar(self, event=None):
+        self.find_frame.pack(side=tk.TOP, fill=tk.X, before=self.preview_pane)
+        self.find_entry.focus_set()
+
+    def hide_find_bar(self):
+        self.find_frame.pack_forget()
+        self.preview_pane.tag_remove("find_highlight", 1.0, tk.END)
+
+    def find_next_in_preview(self, event=None):
+        keyword = self.find_entry.get()
+        if not keyword: return
+        
+        self.preview_pane.tag_remove("find_highlight", 1.0, tk.END)
+        self.preview_pane.tag_configure("find_highlight", background="cyan", foreground="black")
+        
+        start_idx = self.preview_pane.index(tk.INSERT)
+        if start_idx == self.preview_pane.index(tk.END) or self.preview_pane.tag_ranges("find_highlight"):
+            start_idx = "1.0"
+            
+        pos = self.preview_pane.search(keyword, start_idx, tk.END, nocase=True)
+        if pos:
+            end_pos = f"{pos}+{len(keyword)}c"
+            self.preview_pane.tag_add("find_highlight", pos, end_pos)
+            self.preview_pane.see(pos)
+            self.preview_pane.mark_set(tk.INSERT, end_pos)
+        else:
+            # Wrap around
+            pos = self.preview_pane.search(keyword, "1.0", start_idx, nocase=True)
+            if pos:
+                end_pos = f"{pos}+{len(keyword)}c"
+                self.preview_pane.tag_add("find_highlight", pos, end_pos)
+                self.preview_pane.see(pos)
+                self.preview_pane.mark_set(tk.INSERT, end_pos)
+
+    def update_saved_searches_combo(self):
+        self.saved_searches_combo['values'] = list(self.saved_searches.keys())
+        
+    def save_current_search(self):
+        from tkinter import simpledialog
+        name = simpledialog.askstring("Save Search", "Enter a name for this search configuration:", parent=self.root)
+        if not name: return
+        
+        self.saved_searches[name] = {
+            'keyword': self.keyword_var.get(),
+            'path': self.search_path_var.get(),
+            'case': self.case_sensitive_var.get(),
+            'whole': self.whole_word_var.get(),
+            'regex': self.regex_var.get(),
+            'ocr': self.ocr_var.get(),
+            'semantic': self.semantic_var.get(),
+            'size_filter': self.size_filter_var.get(),
+            'size_val': self.size_value_var.get(),
+            'size_unit': self.size_unit_var.get(),
+            'after': self.date_after_var.get(),
+            'before': self.date_before_var.get()
+        }
+        self.update_saved_searches_combo()
+        self.selected_saved_search_var.set(name)
+        messagebox.showinfo("Saved", f"Search '{name}' has been saved.")
+
+    def load_saved_search(self, event=None):
+        name = self.selected_saved_search_var.get()
+        if name in self.saved_searches:
+            s = self.saved_searches[name]
+            self.keyword_var.set(s.get('keyword', ''))
+            self.search_path_var.set(s.get('path', ''))
+            self.case_sensitive_var.set(s.get('case', False))
+            self.whole_word_var.set(s.get('whole', False))
+            self.regex_var.set(s.get('regex', False))
+            self.ocr_var.set(s.get('ocr', False))
+            self.semantic_var.set(s.get('semantic', False))
+            self.size_filter_var.set(s.get('size_filter', 'any'))
+            self.size_value_var.set(s.get('size_val', 0.0))
+            self.size_unit_var.set(s.get('size_unit', 'MB'))
+            self.date_after_var.set(s.get('after', ''))
+            self.date_before_var.set(s.get('before', ''))
+
+    def delete_saved_search(self):
+        name = self.selected_saved_search_var.get()
+        if not name or name not in self.saved_searches: return
+        if messagebox.askyesno("Confirm Delete", f"Delete saved search '{name}'?"):
+            del self.saved_searches[name]
+            self.update_saved_searches_combo()
+            self.selected_saved_search_var.set('')
+
+    def build_index(self):
+        path = self.search_path_var.get()
+        if not path or path.lower() == 'all' or not os.path.exists(path):
+            messagebox.showerror("Invalid Path", "Please select a specific, valid directory to build the index for.")
+            return
+            
+        def _index_thread():
+            try:
+                engine = SearchEngine({}, None)
+                engine.build_index_for_path(
+                    path, 
+                    ignore_folders={name.strip() for name in self.ignore_folders_var.get().split(',') if name.strip()},
+                    ignore_files=[pat.strip() for pat in self.ignore_files_var.get().split(',') if pat.strip()],
+                    progress_callback=lambda msg: self.root.after(0, lambda: self.status_var.set(msg))
+                )
+                self.root.after(0, lambda: messagebox.showinfo("Index Built", f"Index created successfully for {path}"))
+                self.root.after(0, lambda: self.status_var.set("Ready"))
+            except Exception as e:
+                self.root.after(0, lambda e=e: messagebox.showerror("Index Error", f"Failed to build index: {e}"))
+                self.root.after(0, lambda: self.status_var.set("Ready"))
+            finally:
+                self.root.after(0, lambda: self.build_index_button.config(state=tk.NORMAL))
+                
+        self.build_index_button.config(state=tk.DISABLED)
+        self.status_var.set("Building index... This may take a while.")
+        threading.Thread(target=_index_thread, daemon=True).start()

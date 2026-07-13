@@ -10,3 +10,9 @@ nuitka
 ordered-set
 scikit-learn
 zstandard
+pytesseract
+Whoosh
+sentence-transformers
+mutagen
+extract-msg
+EbookLib

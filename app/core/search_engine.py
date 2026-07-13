@@ -10,18 +10,150 @@ try:
     import docx
     import zipfile
 except ImportError:
-    pass
+    fitz = None
+    docx = None
+    zipfile = None
+
+try:
+    import pytesseract
+    from PIL import Image
+    from PIL.ExifTags import TAGS
+except ImportError:
+    pytesseract = None
+    Image = None
+
+try:
+    from whoosh.index import create_in, open_dir
+    from whoosh.fields import Schema, TEXT, ID, NUMERIC
+    from whoosh.qparser import QueryParser
+except ImportError:
+    create_in = None
+
+try:
+    from sentence_transformers import SentenceTransformer, util
+    semantic_model = None  # Lazy load
+except ImportError:
+    SentenceTransformer = None
+
+try:
+    import mutagen
+except ImportError:
+    mutagen = None
+
+try:
+    import extract_msg
+except ImportError:
+    extract_msg = None
+
+try:
+    import ebooklib
+    from ebooklib import epub
+    from bs4 import BeautifulSoup
+except ImportError:
+    ebooklib = None
+    
+import email
+from email.policy import default
 
 class SearchEngine:
     def __init__(self, search_params, cancel_event):
         self.params = search_params
         self.cancel_event = cancel_event
+        self.index_dir_base = os.path.join(os.path.expanduser("~"), ".file_search_pro_index")
+
+    def _get_index_dir_for_path(self, search_path):
+        import hashlib
+        path_hash = hashlib.md5(search_path.encode('utf-8')).hexdigest()
+        return os.path.join(self.index_dir_base, path_hash)
+
+    def build_index_for_path(self, search_path, ignore_folders, ignore_files, progress_callback):
+        if not create_in:
+            raise Exception("Whoosh is not installed. Please pip install Whoosh")
+        
+        index_dir = self._get_index_dir_for_path(search_path)
+        if not os.path.exists(index_dir):
+            os.makedirs(index_dir)
+            
+        schema = Schema(path=ID(stored=True, unique=True), name=TEXT(stored=True), content=TEXT, size=NUMERIC(stored=True), modified=NUMERIC(stored=True))
+        ix = create_in(index_dir, schema)
+        writer = ix.writer()
+        
+        # Temporary overwrite self.params for _collect_files to work
+        old_params = getattr(self, 'params', None)
+        self.params = {
+            'search_paths': [search_path],
+            'ignore_folders': ignore_folders,
+            'ignore_files': ignore_files,
+            'size_filters': None,
+            'date_filters': None
+        }
+        
+        # We need a cancel event if not provided
+        old_cancel = getattr(self, 'cancel_event', None)
+        if old_cancel is None:
+            self.cancel_event = type('obj', (object,), {'is_set': lambda: False})
+            
+        all_files = self._collect_files(progress_callback)
+        total = len(all_files)
+        
+        for i, file_path in enumerate(all_files):
+            progress_callback(f"Indexing... {i+1}/{total}")
+            try:
+                content = self._get_file_content(file_path)
+                if content:
+                    stat = os.stat(file_path)
+                    writer.add_document(path=file_path, name=os.path.basename(file_path), content=content, size=stat.st_size, modified=stat.st_mtime)
+            except Exception:
+                continue
+                
+        progress_callback("Committing index...")
+        writer.commit()
+        
+        # Restore state
+        if old_params: self.params = old_params
+        if old_cancel: self.cancel_event = old_cancel
 
     def run_search(self, progress_callback, result_callback, finish_callback):
+        # 1. Cek apakah ada index untuk path yang dicari
+        indexed_results_returned = False
+        if len(self.params.get('search_paths', [])) == 1:
+            search_path = self.params['search_paths'][0]
+            index_dir = self._get_index_dir_for_path(search_path)
+            
+            # Jika indexing tersedia, tidak menggunakan regex, ocr, semantic (karena Whoosh berbasis teks murni)
+            if os.path.exists(index_dir) and create_in and not self.params.get('regex') and not self.params.get('ocr') and not self.params.get('semantic'):
+                try:
+                    ix = open_dir(index_dir)
+                    with ix.searcher() as searcher:
+                        query_parser = QueryParser("content", ix.schema)
+                        query = query_parser.parse(self.params['keyword'])
+                        progress_callback(f"Searching index for {search_path}...")
+                        results = searcher.search(query, limit=None)
+                        for hit in results:
+                            if self.cancel_event.is_set(): break
+                            if not self._check_size(hit['size'], self.params.get('size_filters')): continue
+                            if not self._check_date(hit['modified'], self.params.get('date_filters')): continue
+                            
+                            result_callback({"name": hit['name'], "path": hit['path'], "size": hit['size'], "modified": hit['modified']})
+                    
+                    if not self.cancel_event.is_set():
+                        finish_callback()
+                        return
+                except Exception as e:
+                    print(f"Index search failed, falling back to live search: {e}")
+
         all_files = self._collect_files(progress_callback)
         if self.cancel_event.is_set():
             finish_callback()
             return
+            
+        # Semantic Lazy Load
+        if self.params.get('semantic') and SentenceTransformer is not None:
+            global semantic_model
+            if semantic_model is None:
+                progress_callback("Loading AI Model...")
+                semantic_model = SentenceTransformer('paraphrase-multilingual-mpnet-base-v2')
+            self.keyword_embedding = semantic_model.encode(self.params['keyword'], convert_to_tensor=True)
             
         with ThreadPoolExecutor(max_workers=self.params.get('max_workers', 4)) as executor:
             future_to_file = {executor.submit(self._process_file, f): f for f in all_files}
@@ -73,13 +205,20 @@ class SearchEngine:
         if content is None: return None
 
         keyword = self.params['keyword']
-        k, c = (keyword, content) if self.params['case_sensitive'] else (keyword.lower(), content.lower())
+        k, c = (keyword, content) if self.params.get('case_sensitive') else (keyword.lower(), content.lower())
         
         match = False
         try:
-            if self.params['regex']:
-                match = bool(re.search(k, c, re.IGNORECASE if not self.params['case_sensitive'] else 0))
-            elif self.params['whole_word']:
+            if self.params.get('semantic') and SentenceTransformer is not None:
+                # Basic chunking for long text
+                chunks = [content[i:i+500] for i in range(0, len(content), 500)] if len(content) > 500 else [content]
+                chunk_embeddings = semantic_model.encode(chunks, convert_to_tensor=True)
+                cos_scores = util.cos_sim(self.keyword_embedding, chunk_embeddings)[0]
+                if max(cos_scores) > 0.65: # Threshold dinaikkan untuk akurasi > 90%
+                    match = True
+            elif self.params.get('regex'):
+                match = bool(re.search(k, c, re.IGNORECASE if not self.params.get('case_sensitive') else 0))
+            elif self.params.get('whole_word'):
                 match = bool(re.search(r'\b' + re.escape(k) + r'\b', c))
             elif k in c:
                 match = True
@@ -103,14 +242,54 @@ class SearchEngine:
                             except (zipfile.BadZipFile, UnicodeDecodeError): continue
             elif ext == ".pdf" and fitz:
                 with fitz.open(file_path) as doc: content = "".join(page.get_text() for page in doc)
+                if self.params.get('ocr') and pytesseract and not content.strip():
+                     # if no text found, try OCR on the first page
+                     with fitz.open(file_path) as doc:
+                         if doc.page_count > 0:
+                             pix = doc[0].get_pixmap()
+                             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                             content = pytesseract.image_to_string(img)
             elif ext == ".docx" and docx:
                 doc = docx.Document(file_path)
                 content = "\n".join(para.text for para in doc.paragraphs)
+            elif ext in [".png", ".jpg", ".jpeg"] and self.params.get('ocr') and pytesseract:
+                img = Image.open(file_path)
+                content = pytesseract.image_to_string(img)
+                # also extract EXIF
+                exif_data = img.getexif()
+                if exif_data:
+                    for tag_id in exif_data:
+                        tag = TAGS.get(tag_id, tag_id)
+                        data = exif_data.get(tag_id)
+                        if isinstance(data, bytes):
+                            data = data.decode(errors='ignore')
+                        content += f"\n{tag}: {data}"
+            elif ext == ".mp3" and mutagen:
+                audio = mutagen.File(file_path, easy=True)
+                if audio:
+                    for k, v in audio.items():
+                        content += f"{k}: {', '.join(v)}\n"
+            elif ext == ".eml":
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    msg = email.message_from_file(f, policy=default)
+                    content = msg.get_body(preferencelist=('plain')).get_content() if msg.get_body(preferencelist=('plain')) else ""
+                    content += f"\nSubject: {msg.get('subject', '')}\nFrom: {msg.get('from', '')}\nTo: {msg.get('to', '')}"
+            elif ext == ".msg" and extract_msg:
+                msg = extract_msg.Message(file_path)
+                content = msg.body
+                content += f"\nSubject: {msg.subject}\nFrom: {msg.sender}\nTo: {msg.to}"
+                msg.close()
+            elif ext == ".epub" and ebooklib:
+                book = epub.read_epub(file_path)
+                for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+                    soup = BeautifulSoup(item.get_body_content(), 'html.parser')
+                    content += soup.get_text() + "\n"
             else:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read(10*1024*1024) # Read up to 10MB
             return content
-        except Exception:
+        except Exception as e:
+            # print(f"Error reading {file_path}: {e}")
             return None
 
     def _check_size(self, file_size, filters):
