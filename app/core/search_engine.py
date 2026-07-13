@@ -151,7 +151,7 @@ class SearchEngine:
         if self.params.get('semantic') and SentenceTransformer is not None:
             global semantic_model
             if semantic_model is None:
-                progress_callback("Loading AI Model...")
+                progress_callback("Loading AI Model (Mengunduh ~1GB pada pertama kali, mohon tunggu beberapa menit)...")
                 semantic_model = SentenceTransformer('paraphrase-multilingual-mpnet-base-v2')
             self.keyword_embedding = semantic_model.encode(self.params['keyword'], convert_to_tensor=True)
             

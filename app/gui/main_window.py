@@ -189,8 +189,13 @@ class FileSearchGUI:
         self.results_menu.add_command(label="Copy Selected Path(s)", command=self.copy_selected_paths)
         self.results_menu.add_command(label="Open File Location", command=self.open_selected_folder)
         self.results_tree.bind("<Button-3>", self.show_context_menu)
-        status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN, anchor='w', padding=(5, 2))
-        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        status_frame = ttk.Frame(self.root)
+        status_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        self.progress_bar = ttk.Progressbar(status_frame, mode='indeterminate')
+        # Sembunyikan progress bar terlebih dahulu, baru akan dipanggil saat search berjalan
+        self.progress_bar.pack(side=tk.RIGHT, padx=5, pady=2)
+        status_bar = ttk.Label(status_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor='w', padding=(5, 2))
+        status_bar.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
     def apply_theme(self, theme_name, custom_theme_dict=None):
         if custom_theme_dict:
@@ -260,6 +265,7 @@ class FileSearchGUI:
         self.cancel_event = threading.Event()
         self.search_button.config(state=tk.DISABLED); self.cancel_button.config(state=tk.NORMAL)
         self.analytics_button.config(state=tk.DISABLED)
+        self.progress_bar.start(15) # Mulai animasi loading
         self.clear_results()
         self.update_search_history(self.keyword_var.get())
         
@@ -312,6 +318,7 @@ class FileSearchGUI:
     def finish_search(self, was_cancelled):
         self.search_running = False
         self.cancel_event.clear() ### PERBAIKAN: Reset event di akhir
+        self.progress_bar.stop() # Hentikan animasi loading
         self.search_button.config(state=tk.NORMAL); self.cancel_button.config(state=tk.DISABLED)
         if self.found_files_count > 0: self.analytics_button.config(state=tk.NORMAL)
         
@@ -642,7 +649,9 @@ class FileSearchGUI:
                 self.root.after(0, lambda: self.status_var.set("Ready"))
             finally:
                 self.root.after(0, lambda: self.build_index_button.config(state=tk.NORMAL))
+                self.root.after(0, self.progress_bar.stop)
                 
         self.build_index_button.config(state=tk.DISABLED)
         self.status_var.set("Building index... This may take a while.")
+        self.progress_bar.start(15)
         threading.Thread(target=_index_thread, daemon=True).start()
