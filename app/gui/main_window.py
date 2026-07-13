@@ -633,7 +633,9 @@ class FileSearchGUI:
                     ignore_files=[pat.strip() for pat in self.ignore_files_var.get().split(',') if pat.strip()],
                     progress_callback=lambda msg: self.root.after(0, lambda: self.status_var.set(msg))
                 )
-                self.root.after(0, lambda: messagebox.showinfo("Index Built", f"Index created successfully for {path}"))
+                index_loc = engine._get_index_dir_for_path(path)
+                msg = f"Index created successfully for:\n{path}\n\nIndex Database Saved to:\n{index_loc}"
+                self.root.after(0, lambda: messagebox.showinfo("Index Built", msg))
                 self.root.after(0, lambda: self.status_var.set("Ready"))
             except Exception as e:
                 self.root.after(0, lambda e=e: messagebox.showerror("Index Error", f"Failed to build index: {e}"))
