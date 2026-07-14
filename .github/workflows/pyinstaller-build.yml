@@ -73,8 +73,13 @@ jobs:
             echo "ARTIFACT_PATH=final_dist/*" >> $GITHUB_ENV
           elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
             ARTIFACT_NAME="File-Search-Pro-v${VERSION}-macOS"
-            mv dist/FileSearchPro "dist/$ARTIFACT_NAME"
-            echo "ARTIFACT_PATH=dist/${ARTIFACT_NAME}" >> $GITHUB_ENV
+            if [ -d "dist/FileSearchPro.app" ]; then
+              mv dist/FileSearchPro.app "dist/$ARTIFACT_NAME.app"
+              echo "ARTIFACT_PATH=dist/${ARTIFACT_NAME}.app" >> $GITHUB_ENV
+            else
+              mv dist/FileSearchPro "dist/$ARTIFACT_NAME"
+              echo "ARTIFACT_PATH=dist/${ARTIFACT_NAME}" >> $GITHUB_ENV
+            fi
           else
             ARTIFACT_NAME="File-Search-Pro-v${VERSION}-Linux-x64"
             mv dist/FileSearchPro "dist/$ARTIFACT_NAME"
