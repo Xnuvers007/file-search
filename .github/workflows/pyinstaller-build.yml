@@ -48,12 +48,25 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: brew install upx
 
+      - name: 5c. Install Linux Packaging Tools
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev rubygems build-essential rpm imagemagick
+          sudo gem install fpm
+
       - name: 6. Build with PyInstaller
         shell: bash
         run: |
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             pyinstaller --noconfirm --clean --windowed \
               --upx-exclude "torch.dll" --upx-exclude "torch_cpu.dll" --upx-exclude "torch_python.dll" \
+              --name FileSearchPro \
+              --icon=assets/search_icon.ico \
+              main.py
+          elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            pyinstaller --noconfirm --clean --windowed --onefile \
+              --upx-exclude "libtorch.so" --upx-exclude "libtorch_cpu.so" --upx-exclude "libtorch.dylib" --upx-exclude "libtorch_cpu.dylib" \
               --name FileSearchPro \
               --icon=assets/search_icon.ico \
               main.py
@@ -76,22 +89,62 @@ jobs:
         run: |
           VERSION="${{ env.VERSION }}"
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            ARTIFACT_NAME="FileSearchPro_Setup_v${VERSION}_Windows_x64.exe"
             mkdir -p final_dist
             mv dist_installer/* final_dist/
             echo "ARTIFACT_PATH=final_dist/*" >> $GITHUB_ENV
           elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-            ARTIFACT_NAME="File-Search-Pro-v${VERSION}-macOS"
-            mv dist/FileSearchPro "dist/$ARTIFACT_NAME"
-            chmod +x "dist/$ARTIFACT_NAME"
-            echo "ARTIFACT_PATH=dist/${ARTIFACT_NAME}" >> $GITHUB_ENV
+            mkdir -p final_dist
+            ZIP_NAME="File-Search-Pro-v${VERSION}-macOS.zip"
+            cd dist
+            if [ -d "FileSearchPro.app" ]; then
+              zip -r "../final_dist/$ZIP_NAME" FileSearchPro.app
+              cp FileSearchPro.app/Contents/MacOS/FileSearchPro "../final_dist/File-Search-Pro-v${VERSION}-macOS"
+              chmod +x "../final_dist/File-Search-Pro-v${VERSION}-macOS"
+            else
+              zip -r "../final_dist/$ZIP_NAME" FileSearchPro
+            fi
+            cd ..
+            echo "ARTIFACT_PATH=final_dist/*" >> $GITHUB_ENV
           else
-            ARTIFACT_NAME="File-Search-Pro-v${VERSION}-Linux-x64"
-            mv dist/FileSearchPro "dist/$ARTIFACT_NAME"
-            chmod +x "dist/$ARTIFACT_NAME"
-            echo "ARTIFACT_PATH=dist/${ARTIFACT_NAME}" >> $GITHUB_ENV
+            mkdir -p final_dist
+            BIN_NAME="File-Search-Pro-v${VERSION}-Linux-x64"
+            mv dist/FileSearchPro "final_dist/$BIN_NAME"
+            chmod +x "final_dist/$BIN_NAME"
+            
+            # --- Build .deb & .rpm ---
+            mkdir -p build_linux/usr/bin
+            cp "final_dist/$BIN_NAME" build_linux/usr/bin/FileSearchPro
+            fpm -s dir -t deb -n "filesearchpro" -v "${VERSION}" -C build_linux usr/bin
+            fpm -s dir -t rpm -n "filesearchpro" -v "${VERSION}" -C build_linux usr/bin
+            mv *.deb final_dist/ || true
+            mv *.rpm final_dist/ || true
+            
+            # --- Build .AppImage ---
+            wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" -O appimagetool
+            chmod +x appimagetool
+            mkdir -p FileSearchPro.AppDir/usr/bin
+            cp "final_dist/$BIN_NAME" FileSearchPro.AppDir/usr/bin/FileSearchPro
+            
+            echo '#!/bin/sh' > FileSearchPro.AppDir/AppRun
+            echo 'HERE="$(dirname "$(readlink -f "${0}")")"' >> FileSearchPro.AppDir/AppRun
+            echo 'export PATH="${HERE}/usr/bin:${PATH}"' >> FileSearchPro.AppDir/AppRun
+            echo 'exec "${HERE}/usr/bin/FileSearchPro" "$@"' >> FileSearchPro.AppDir/AppRun
+            chmod +x FileSearchPro.AppDir/AppRun
+            
+            echo '[Desktop Entry]' > FileSearchPro.AppDir/FileSearchPro.desktop
+            echo 'Name=File Content Search Pro' >> FileSearchPro.AppDir/FileSearchPro.desktop
+            echo 'Exec=FileSearchPro' >> FileSearchPro.AppDir/FileSearchPro.desktop
+            echo 'Icon=FileSearchPro' >> FileSearchPro.AppDir/FileSearchPro.desktop
+            echo 'Type=Application' >> FileSearchPro.AppDir/FileSearchPro.desktop
+            echo 'Categories=Utility;' >> FileSearchPro.AppDir/FileSearchPro.desktop
+            
+            # Extract icon
+            convert assets/search_icon.ico[0] FileSearchPro.AppDir/FileSearchPro.png || cp assets/search_icon.ico FileSearchPro.AppDir/FileSearchPro.png || touch FileSearchPro.AppDir/FileSearchPro.png
+            
+            ./appimagetool --appimage-extract-and-run FileSearchPro.AppDir "final_dist/File-Search-Pro-v${VERSION}-Linux-x64.AppImage"
+            echo "ARTIFACT_PATH=final_dist/*" >> $GITHUB_ENV
           fi
-          echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
+          echo "ARTIFACT_NAME=Release-Assets-${{ matrix.os }}" >> $GITHUB_ENV
 
       - name: 9. Upload artifact
         uses: actions/upload-artifact@v4
