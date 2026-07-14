@@ -72,7 +72,9 @@ class I18n:
                 'Search cancelled. Found {} file(s) in {:.2f}s.': 'Pencarian dibatalkan. Menemukan {} file dalam {:.2f}d.',
                 'Search complete. Found {} file(s) in {:.2f}s.': 'Pencarian selesai. Menemukan {} file dalam {:.2f}d.',
                 'No files found matching your criteria.': 'Tidak ada file yang sesuai kriteria.',
-                'Search Complete': 'Pencarian Selesai'
+                'Search Complete': 'Pencarian Selesai',
+                'Application Already Running': 'Aplikasi Sudah Berjalan',
+                'An instance of File Content Search Pro is already running.': 'Aplikasi ini sudah jalan, ngapain dijalani lagi gitu.'
             }
         }
     

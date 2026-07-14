@@ -1,9 +1,12 @@
 # main.py
+import os
+import sys
+import ctypes
 import tkinter as tk
 from tkinter import ttk, messagebox
 from app.gui.main_window import FileSearchGUI
 from app.utils.settings_manager import SettingsManager
-from app.utils.i18n import set_language
+from app.utils.i18n import set_language, _
 
 # ### PERUBAHAN DI SINI: Import Pillow ###
 try:
@@ -13,6 +16,27 @@ except ImportError:
 
 def main():
     """Fungsi utama untuk menjalankan aplikasi dengan splash screen."""
+    # Inisialisasi Settings & Bahasa di awal agar notifikasi menggunakan bahasa yang benar
+    settings = SettingsManager().load()
+    set_language(settings.get('language', 'en'))
+
+    # Pengecekan Single Instance
+    mutex_name = "FileSearchPro_SingleInstance_Mutex"
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    last_error = ctypes.windll.kernel32.GetLastError()
+    
+    if last_error == 183: # ERROR_ALREADY_EXISTS
+        # Gunakan root sementara untuk menampilkan messagebox jika root utama belum dibuat
+        temp_root = tk.Tk()
+        temp_root.withdraw()
+        messagebox.showwarning(_("Application Already Running"), _("An instance of File Content Search Pro is already running."))
+        temp_root.destroy()
+        sys.exit()
+
+    # Simpan reference mutex agar tidak di-garbage collect
+    global _app_mutex
+    _app_mutex = mutex
+
     # ... (Pengecekan library lain tetap sama)
     if ImageTk is None:
         messagebox.showerror("Dependency Error", "Library Pillow tidak ditemukan.\n\nSilakan instal dengan menjalankan:\npip install Pillow")
@@ -56,10 +80,6 @@ def main():
     progress = ttk.Progressbar(splash_frame, mode='indeterminate')
     progress.place(relx=0.5, rely=0.85, anchor="center", relwidth=0.7)
     progress.start(15)
-
-    # Inisialisasi Settings & Bahasa
-    settings = SettingsManager().load()
-    set_language(settings.get('language', 'en'))
 
     def main_app_setup():
         splash.destroy()
