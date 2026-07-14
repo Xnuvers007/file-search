@@ -73,6 +73,7 @@ class FileSearchGUI:
         self.saved_searches = {}
         self.selected_saved_search_var = tk.StringVar()
         self.max_workers_var = tk.IntVar(value=os.cpu_count() or 4)
+        self.ai_queue_size_var = tk.IntVar(value=50)
         self.save_results_var = tk.BooleanVar(value=True)
         self.size_filter_var = tk.StringVar(value="any")
         self.size_value_var = tk.DoubleVar(value=0)
@@ -153,6 +154,8 @@ class FileSearchGUI:
         perf_frame = ttk.Frame(filters_frame); perf_frame.grid(row=4, column=0, columnspan=2, sticky='w', padx=5, pady=5)
         ttk.Label(perf_frame, text="Max Workers:").pack(side=tk.LEFT)
         ttk.Spinbox(perf_frame, from_=1, to=(os.cpu_count() or 1) * 2, width=5, textvariable=self.max_workers_var).pack(side=tk.LEFT, padx=5)
+        ttk.Label(perf_frame, text="AI Queue Size:").pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Spinbox(perf_frame, from_=1, to=1000, width=5, textvariable=self.ai_queue_size_var).pack(side=tk.LEFT, padx=5)
         ttk.Checkbutton(perf_frame, text="Auto-save Results", variable=self.save_results_var).pack(side=tk.LEFT, padx=20)
         control_frame = ttk.Frame(self.left_frame); control_frame.grid(row=2, column=0, pady=10, sticky='w')
         self.search_button = ttk.Button(control_frame, text="Start Search", command=self.start_search); self.search_button.pack(side=tk.LEFT)
@@ -292,7 +295,7 @@ class FileSearchGUI:
             'case_sensitive': self.case_sensitive_var.get(), 'whole_word': self.whole_word_var.get(),
             'regex': self.regex_var.get(), 'ocr': self.ocr_var.get(), 'semantic': self.semantic_var.get(),
             'archive': self.archive_var.get(), 'fuzzy': self.fuzzy_var.get(),
-            'max_workers': self.max_workers_var.get(),
+            'max_workers': self.max_workers_var.get(), 'ai_queue_size': self.ai_queue_size_var.get(),
             'ignore_folders': {name.strip() for name in self.ignore_folders_var.get().split(',') if name.strip()},
             'ignore_files': [pat.strip() for pat in self.ignore_files_var.get().split(',') if pat.strip()],
             'size_filters': size_filters, 'date_filters': date_filters
@@ -444,6 +447,7 @@ class FileSearchGUI:
         self.regex_var.set(settings.get('regex', False))
         self.ocr_var.set(settings.get('ocr', False))
         self.semantic_var.set(settings.get('semantic', False))
+        self.ai_queue_size_var.set(settings.get('ai_queue_size', 50))
         self.save_results_var.set(settings.get('autosave', True))
         self.ignore_folders_var.set(settings.get('ignore_folders', '.git, .svn, .vscode, .idea, __pycache__, node_modules, venv, env, build, dist'))
         self.ignore_files_var.set(settings.get('ignore_files', '*.log, *.tmp, *.bak'))
@@ -463,7 +467,7 @@ class FileSearchGUI:
             'theme': self.selected_theme, 'history': self.search_history,
             'case': self.case_sensitive_var.get(), 'whole': self.whole_word_var.get(), 
             'regex': self.regex_var.get(), 'ocr': self.ocr_var.get(), 'semantic': self.semantic_var.get(), 
-            'autosave': self.save_results_var.get(),
+            'ai_queue_size': self.ai_queue_size_var.get(), 'autosave': self.save_results_var.get(),
             'ignore_folders': self.ignore_folders_var.get(), 'ignore_files': self.ignore_files_var.get(),
             'saved_searches': self.saved_searches
         }
@@ -544,13 +548,22 @@ class FileSearchGUI:
         item = selection[0]
         file_path = self.results_tree.item(item, 'values')[0]
         
+        self.preview_pane.config(state="normal")
+        self.preview_pane.delete(1.0, tk.END)
+        self.preview_pane.insert(tk.END, f"Membaca dan merender teks dari file...\n\nNama File: {os.path.basename(file_path)}\n\nMohon tunggu sebentar, aplikasi mungkin akan freeze/macet sementara jika file berukuran besar...")
+        self.preview_pane.config(state="disabled")
+        
+        self.root.update_idletasks() 
+        
         content = SearchEngine({}, None)._get_file_content(file_path)
         
         self.preview_pane.config(state="normal")
         self.preview_pane.delete(1.0, tk.END)
         self.preview_pane.insert(tk.END, content if content else "Cannot preview this file type or file is empty.")
+        
         if content:
             self._highlight_keyword(self.keyword_var.get())
+            
         self.preview_pane.config(state="disabled")
 
     # --- File Manager & Export Methods ---
@@ -755,4 +768,4 @@ class FileSearchGUI:
         self.build_index_button.config(state=tk.DISABLED)
         self.status_var.set("Building index... This may take a while.")
         self.progress_bar.start(15)
-        threading.Thread(target=_index_thread, daemon=True).start()
+        threading.Thread(target=_index_thread, daemon=True).start()

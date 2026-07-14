@@ -3,7 +3,11 @@ import os
 
 class SettingsManager:
     def __init__(self, filename="search_settings.json"):
-        self.filepath = filename
+        # Menyimpan pengaturan di home directory (AppData) agar tidak terkena blokir hak akses di Program Files
+        home_dir = os.path.join(os.path.expanduser("~"), ".file_search_pro")
+        if not os.path.exists(home_dir):
+            os.makedirs(home_dir, exist_ok=True)
+        self.filepath = os.path.join(home_dir, filename)
 
     def load(self):
         """Memuat pengaturan dari file JSON."""

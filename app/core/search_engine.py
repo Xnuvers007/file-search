@@ -157,6 +157,17 @@ class SearchEngine:
             finish_callback()
             return
             
+        # Regex Validation
+        if self.params.get('regex'):
+            try:
+                # Coba kompilasi regex, jika gagal hentikan pencarian
+                re.compile(self.params['keyword'], re.IGNORECASE if not self.params.get('case_sensitive') else 0)
+            except re.error as e:
+                # Kembalikan file palsu/dummy sebagai notifikasi error atau panggil finish_callback
+                logger.error(f"Invalid regex: {e}")
+                finish_callback()
+                return
+            
         # Semantic Lazy Load
         if self.params.get('semantic') and SentenceTransformer is not None:
             global semantic_model
@@ -168,7 +179,8 @@ class SearchEngine:
         use_ai_ocr = self.params.get('semantic') or self.params.get('ocr')
         
         if use_ai_ocr:
-            ai_queue = queue.Queue()
+            q_size = self.params.get('ai_queue_size', 50)
+            ai_queue = queue.Queue(maxsize=q_size)
             ai_worker_thread = threading.Thread(target=self._ai_worker, args=(ai_queue, progress_callback, result_callback))
             ai_worker_thread.start()
             
@@ -357,7 +369,9 @@ class SearchEngine:
                     content += soup.get_text() + "\n"
             else:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read(10*1024*1024) # Read up to 10MB
+                    # content = f.read(10*1024*1024) # Read up to 10MB
+                    # content = f.read(100 * 1024 * 1024)
+                    content = f.read()
             return content
         except Exception as e:
             logger.debug(f"Error reading {file_path}: {e}")

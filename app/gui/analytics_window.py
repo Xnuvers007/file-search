@@ -27,6 +27,9 @@ class AnalyticsWindow(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
         
+        # Cegah memory leak dari Matplotlib
+        self.protocol("WM_DELETE_WINDOW", self._on_close_window)
+        
         if not results_data:
             self.destroy()
             messagebox.showinfo("No Data", "No results to analyze.", parent=parent)
@@ -78,7 +81,7 @@ class AnalyticsWindow(tk.Toplevel):
         title_label.pack(side=tk.LEFT, padx=5)
         
         # Tombol Close di kanan atas
-        close_btn = ttk.Button(header_frame, text="Close", command=self.destroy, style="Accent.TButton", width=10)
+        close_btn = ttk.Button(header_frame, text="Close", command=self._on_close_window, style="Accent.TButton", width=10)
         close_btn.pack(side=tk.RIGHT, padx=5)
         
         # --- Stats row ---
@@ -250,3 +253,7 @@ class AnalyticsWindow(tk.Toplevel):
                         font=("Arial", 10, "bold"),
                         background=accent_color,
                         foreground="white")
+
+    def _on_close_window(self):
+        plt.close('all') # Membersihkan semua figure Matplotlib dari memori
+        self.destroy()
