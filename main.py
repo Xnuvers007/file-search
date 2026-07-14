@@ -2,6 +2,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from app.gui.main_window import FileSearchGUI
+from app.utils.settings_manager import SettingsManager
+from app.utils.i18n import set_language
 
 # ### PERUBAHAN DI SINI: Import Pillow ###
 try:
@@ -22,7 +24,8 @@ def main():
     splash = tk.Toplevel(root)
     splash.overrideredirect(True)
 
-    splash_width, splash_height = 400, 250 # Perbesar sedikit untuk logo
+    splash_width, splash_height = 600, 400
+
     screen_width, screen_height = root.winfo_screenwidth(), root.winfo_screenheight()
     x = (screen_width // 2) - (splash_width // 2)
     y = (screen_height // 2) - (splash_height // 2)
@@ -33,23 +36,30 @@ def main():
     
     # ### PERUBAHAN DI SINI: Menambahkan logo ke splash screen ###
     icon_path = 'assets/search_icon.ico'
+    splash_bg = 'assets/splash.png'
     try:
-        splash.iconbitmap(icon_path) # Set ikon untuk jendela splash
-        img = Image.open(icon_path).resize((64, 64), Image.Resampling.LANCZOS)
-        logo = ImageTk.PhotoImage(img)
-        logo_label = tk.Label(splash_frame, image=logo, bg="#2E2E2E")
-        logo_label.image = logo # Simpan referensi agar tidak di-garbage collect
-        logo_label.pack(pady=(20, 10))
+        if os.path.exists(icon_path):
+            splash.iconbitmap(icon_path) # Set ikon untuk jendela splash
+        if os.path.exists(splash_bg):
+            img = Image.open(splash_bg).resize((splash_width, splash_height), Image.Resampling.LANCZOS)
+            bg_image = ImageTk.PhotoImage(img)
+            bg_label = tk.Label(splash_frame, image=bg_image, borderwidth=0)
+            bg_label.image = bg_image
+            bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+        else:
+            tk.Label(splash_frame, text="File Content Search Pro", font=("Segoe UI", 24, "bold"), bg="#2E2E2E", fg="#FFFFFF").pack(pady=(150, 10))
+            tk.Label(splash_frame, text="Loading application...", font=("Segoe UI", 10), bg="#2E2E2E", fg="#CCCCCC").pack(pady=5)
     except Exception as e:
-        print(f"Gagal memuat logo: {e}")
-        # Tetap tampilkan label teks jika logo gagal dimuat
-        tk.Label(splash_frame, text="🔍", font=("Segoe UI", 36, "bold"), bg="#2E2E2E", fg="#FFFFFF").pack(pady=(20,10))
+        print(f"Gagal memuat splash background: {e}")
+        tk.Label(splash_frame, text="File Content Search Pro", font=("Segoe UI", 24, "bold"), bg="#2E2E2E", fg="#FFFFFF").pack(pady=(150, 10))
 
-    tk.Label(splash_frame, text="File Content Search Pro", font=("Segoe UI", 16, "bold"), bg="#2E2E2E", fg="#FFFFFF").pack()
-    tk.Label(splash_frame, text="Loading application...", font=("Segoe UI", 9), bg="#2E2E2E", fg="#CCCCCC").pack(pady=5)
     progress = ttk.Progressbar(splash_frame, mode='indeterminate')
-    progress.pack(pady=10, padx=40, fill="x")
+    progress.place(relx=0.5, rely=0.85, anchor="center", relwidth=0.7)
     progress.start(15)
+
+    # Inisialisasi Settings & Bahasa
+    settings = SettingsManager().load()
+    set_language(settings.get('language', 'en'))
 
     def main_app_setup():
         splash.destroy()

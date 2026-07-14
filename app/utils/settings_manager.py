@@ -16,8 +16,36 @@ class SettingsManager:
                 with open(self.filepath, 'r', encoding='utf-8') as f:
                     return json.load(f)
             except (json.JSONDecodeError, IOError):
-                return {}
-        return {}
+                return {
+            'theme': 'Light',
+            'history': [],
+            'case': False,
+            'whole': False,
+            'regex': False,
+            'ocr': False,
+            'semantic': False,
+            'ai_queue_size': 50,
+            'autosave': True,
+            'ignore_folders': '.git, .svn, .vscode, .idea, __pycache__, node_modules, venv, env, build, dist, temp, tmp, $RECYCLE.BIN, System Volume Information',
+            'ignore_files': '*.log, *.tmp, *.bak, .DS_Store, thumbs.db',
+            'saved_searches': {},
+            'language': 'en'
+        }
+        return {
+            'theme': 'Light',
+            'history': [],
+            'case': False,
+            'whole': False,
+            'regex': False,
+            'ocr': False,
+            'semantic': False,
+            'ai_queue_size': 50,
+            'autosave': True,
+            'ignore_folders': '.git, .svn, .vscode, .idea, __pycache__, node_modules, venv, env, build, dist, temp, tmp, $RECYCLE.BIN, System Volume Information',
+            'ignore_files': '*.log, *.tmp, *.bak, .DS_Store, thumbs.db',
+            'saved_searches': {},
+            'language': 'en'
+        }
 
     def save(self, settings_data):
         """Menyimpan pengaturan ke file JSON."""

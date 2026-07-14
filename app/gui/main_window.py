@@ -8,11 +8,14 @@ from tkinter import ttk, filedialog, messagebox, scrolledtext
 from datetime import datetime
 import queue
 import re
+import urllib.request
+import json
 
 from .theme_editor import ThemeEditorWindow
 from .analytics_window import AnalyticsWindow
 from ..core.search_engine import SearchEngine
 from ..utils.settings_manager import SettingsManager
+from ..utils.i18n import _, set_language, get_languages, get_current_language
 from .donation_window import DonationWindow
 
 class FileSearchGUI:
@@ -47,7 +50,7 @@ class FileSearchGUI:
         }
 
     def setup_window(self):
-        self.root.title("File Content Search Pro - Xnuvers007 | Indra Dwi A")
+        self.root.title(_("File Content Search Pro - Xnuvers007 | Indra Dwi A"))
         
         try:
             self.root.state('zoomed')
@@ -93,95 +96,110 @@ class FileSearchGUI:
         
         # Menu File
         file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Open Search Location", command=self.browse_folder)
-        file_menu.add_command(label="Save Results", command=self.auto_save_results)
+        menubar.add_cascade(label=_("File"), menu=file_menu)
+        file_menu.add_command(label=_("Open Search Location"), command=self.browse_folder)
+        file_menu.add_command(label=_("Save Results"), command=self.auto_save_results)
         file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.on_close)
+        file_menu.add_command(label=_("Exit"), command=self.on_close)
         
         # Menu Settings
         settings_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Settings", menu=settings_menu)
+        menubar.add_cascade(label=_("Settings"), menu=settings_menu)
         self.theme_menu = tk.Menu(settings_menu, tearoff=0)
-        settings_menu.add_cascade(label="Theme", menu=self.theme_menu)
+        settings_menu.add_cascade(label=_("Theme"), menu=self.theme_menu)
         self.rebuild_theme_menu()
+        
+        self.lang_menu = tk.Menu(settings_menu, tearoff=0)
+        settings_menu.add_cascade(label=_("Language (Requires Restart)"), menu=self.lang_menu)
+        for code, name in get_languages().items():
+            self.lang_menu.add_command(label=name, command=lambda c=code: self.change_language(c))
 
         settings_menu.add_separator()
-        settings_menu.add_command(label="Donate / Support", command=self.show_donation_window)
+        settings_menu.add_command(label=_("Donate / Support"), command=self.show_donation_window)
         
         # Menu Help
         help_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Help", menu=help_menu)
-        help_menu.add_command(label="About", command=self.show_about)
+        menubar.add_cascade(label=_("Help"), menu=help_menu)
+        help_menu.add_command(label=_("Check for Updates"), command=self.check_for_updates)
+        help_menu.add_command(label=_("About"), command=self.show_about)
 
         main_h_pane = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         main_h_pane.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10,0))
         self.left_frame = ttk.Frame(main_h_pane, padding=10); main_h_pane.add(self.left_frame, weight=1); self.left_frame.columnconfigure(0, weight=1)
-        config_frame = ttk.LabelFrame(self.left_frame, text="Search Configuration", padding=10)
+        config_frame = ttk.LabelFrame(self.left_frame, text=_("Search Configuration"), padding=10)
         config_frame.grid(row=0, column=0, sticky="ew"); config_frame.columnconfigure(1, weight=1)
-        ttk.Label(config_frame, text="Keyword:", style='Heading.TLabel').grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        ttk.Label(config_frame, text=_("Keyword:"), style='Heading.TLabel').grid(row=0, column=0, sticky="w", padx=5, pady=2)
         self.keyword_combo = ttk.Combobox(config_frame, textvariable=self.keyword_var, font=('Segoe UI', 10))
         self.keyword_combo.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=2)
         options_frame = ttk.Frame(config_frame); options_frame.grid(row=2, column=0, columnspan=2, sticky="w", padx=5, pady=5)
-        ttk.Checkbutton(options_frame, text="Case Sensitive", variable=self.case_sensitive_var).pack(side=tk.LEFT)
-        ttk.Checkbutton(options_frame, text="Whole Word", variable=self.whole_word_var).pack(side=tk.LEFT, padx=10)
-        ttk.Checkbutton(options_frame, text="Regex", variable=self.regex_var).pack(side=tk.LEFT)
-        ttk.Checkbutton(options_frame, text="OCR (Images)", variable=self.ocr_var).pack(side=tk.LEFT, padx=10)
-        ttk.Checkbutton(options_frame, text="Semantic (AI)", variable=self.semantic_var).pack(side=tk.LEFT)
-        ttk.Checkbutton(options_frame, text="Fuzzy", variable=self.fuzzy_var).pack(side=tk.LEFT, padx=10)
-        ttk.Checkbutton(options_frame, text="Archives", variable=self.archive_var).pack(side=tk.LEFT)
-        ttk.Label(config_frame, text="Path:", style='Heading.TLabel').grid(row=3, column=0, sticky="w", padx=5, pady=2)
+        ttk.Checkbutton(options_frame, text=_("Case Sensitive"), variable=self.case_sensitive_var).pack(side=tk.LEFT)
+        ttk.Checkbutton(options_frame, text=_("Whole Word"), variable=self.whole_word_var).pack(side=tk.LEFT, padx=10)
+        ttk.Checkbutton(options_frame, text=_("Regex"), variable=self.regex_var).pack(side=tk.LEFT)
+        ttk.Checkbutton(options_frame, text=_("OCR (Images)"), variable=self.ocr_var).pack(side=tk.LEFT, padx=10)
+        ttk.Checkbutton(options_frame, text=_("Semantic (AI)"), variable=self.semantic_var).pack(side=tk.LEFT)
+        ttk.Checkbutton(options_frame, text=_("Fuzzy"), variable=self.fuzzy_var).pack(side=tk.LEFT, padx=10)
+        ttk.Checkbutton(options_frame, text=_("Archives"), variable=self.archive_var).pack(side=tk.LEFT)
+        ttk.Label(config_frame, text=_("Path:"), style='Heading.TLabel').grid(row=3, column=0, sticky="w", padx=5, pady=2)
         path_frame = ttk.Frame(config_frame); path_frame.grid(row=4, column=0, columnspan=2, sticky="ew", padx=5, pady=2); path_frame.columnconfigure(0, weight=1)
         self.path_entry = ttk.Entry(path_frame, textvariable=self.search_path_var); self.path_entry.grid(row=0, column=0, sticky="ew")
-        ttk.Button(path_frame, text="Browse", command=self.browse_folder, width=8).grid(row=0, column=1, padx=(5,2))
-        ttk.Button(path_frame, text="All Drives", command=lambda: self.search_path_var.set("all"), width=8).grid(row=0, column=2)
-        filters_frame = ttk.LabelFrame(self.left_frame, text="Filters & Performance", padding=10)
+        ttk.Button(path_frame, text=_("Browse"), command=self.browse_folder, width=8).grid(row=0, column=1, padx=(5,2))
+        ttk.Button(path_frame, text=_("All Drives"), command=lambda: self.search_path_var.set("all"), width=8).grid(row=0, column=2)
+        filters_frame = ttk.LabelFrame(self.left_frame, text=_("Filters & Performance"), padding=10)
         filters_frame.grid(row=1, column=0, sticky="ew", pady=10); filters_frame.columnconfigure(1, weight=1)
-        ttk.Label(filters_frame, text="Size:", style='Heading.TLabel').grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        ttk.Label(filters_frame, text=_("Size:"), style='Heading.TLabel').grid(row=0, column=0, sticky="w", padx=5, pady=2)
         size_frame = ttk.Frame(filters_frame); size_frame.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
         ttk.Combobox(size_frame, textvariable=self.size_filter_var, values=["any", "greater than", "less than"], width=12, state='readonly').pack(side=tk.LEFT)
         ttk.Entry(size_frame, textvariable=self.size_value_var, width=8).pack(side=tk.LEFT, padx=(5,0))
         ttk.Combobox(size_frame, textvariable=self.size_unit_var, values=["KB", "MB", "GB"], width=5, state='readonly').pack(side=tk.LEFT)
-        ttk.Label(filters_frame, text="Date Modified:", style='Heading.TLabel').grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        ttk.Label(filters_frame, text=_("Date Modified:"), style='Heading.TLabel').grid(row=1, column=0, sticky="w", padx=5, pady=2)
         date_frame = ttk.Frame(filters_frame); date_frame.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
-        ttk.Label(date_frame, text="After:").pack(side=tk.LEFT); ttk.Entry(date_frame, textvariable=self.date_after_var, width=12).pack(side=tk.LEFT, padx=(0,5))
-        ttk.Label(date_frame, text="Before:").pack(side=tk.LEFT); ttk.Entry(date_frame, textvariable=self.date_before_var, width=12).pack(side=tk.LEFT)
+        ttk.Label(date_frame, text=_("After:")).pack(side=tk.LEFT); ttk.Entry(date_frame, textvariable=self.date_after_var, width=12).pack(side=tk.LEFT, padx=(0,5))
+        ttk.Label(date_frame, text=_("Before:")).pack(side=tk.LEFT); ttk.Entry(date_frame, textvariable=self.date_before_var, width=12).pack(side=tk.LEFT)
         ttk.Label(date_frame, text="(Y-M-D)").pack(side=tk.LEFT, padx=5)
-        ttk.Label(filters_frame, text="Ignore Folders:", style='Heading.TLabel').grid(row=2, column=0, sticky="w", padx=5, pady=2)
+        ttk.Label(filters_frame, text=_("Ignore Folders:"), style='Heading.TLabel').grid(row=2, column=0, sticky="w", padx=5, pady=2)
         ttk.Entry(filters_frame, textvariable=self.ignore_folders_var).grid(row=2, column=1, sticky="ew", padx=5, pady=2)
-        ttk.Label(filters_frame, text="Ignore Files:", style='Heading.TLabel').grid(row=3, column=0, sticky="w", padx=5, pady=2)
+        ttk.Label(filters_frame, text=_("Ignore Files:"), style='Heading.TLabel').grid(row=3, column=0, sticky="w", padx=5, pady=2)
         ttk.Entry(filters_frame, textvariable=self.ignore_files_var).grid(row=3, column=1, sticky="ew", padx=5, pady=2)
         perf_frame = ttk.Frame(filters_frame); perf_frame.grid(row=4, column=0, columnspan=2, sticky='w', padx=5, pady=5)
-        ttk.Label(perf_frame, text="Max Workers:").pack(side=tk.LEFT)
+        ttk.Label(perf_frame, text=_("Max Workers:")).pack(side=tk.LEFT)
         ttk.Spinbox(perf_frame, from_=1, to=(os.cpu_count() or 1) * 2, width=5, textvariable=self.max_workers_var).pack(side=tk.LEFT, padx=5)
-        ttk.Label(perf_frame, text="AI Queue Size:").pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Label(perf_frame, text=_("AI Queue Size:")).pack(side=tk.LEFT, padx=(10, 0))
         ttk.Spinbox(perf_frame, from_=1, to=1000, width=5, textvariable=self.ai_queue_size_var).pack(side=tk.LEFT, padx=5)
-        ttk.Checkbutton(perf_frame, text="Auto-save Results", variable=self.save_results_var).pack(side=tk.LEFT, padx=20)
+        ttk.Checkbutton(perf_frame, text=_("Auto-save Results"), variable=self.save_results_var).pack(side=tk.LEFT, padx=10)
+        ttk.Label(perf_frame, text=_("Language:")).pack(side=tk.LEFT, padx=(10, 5))
+        self.lang_var = tk.StringVar(value=get_languages().get(get_current_language(), "English"))
+        self.lang_combo = ttk.Combobox(perf_frame, textvariable=self.lang_var, values=list(get_languages().values()), state='readonly', width=12)
+        self.lang_combo.pack(side=tk.LEFT)
+        self.lang_combo.bind('<<ComboboxSelected>>', self._on_lang_combo_changed)
         control_frame = ttk.Frame(self.left_frame); control_frame.grid(row=2, column=0, pady=10, sticky='w')
-        self.search_button = ttk.Button(control_frame, text="Start Search", command=self.start_search); self.search_button.pack(side=tk.LEFT)
-        self.build_index_button = ttk.Button(control_frame, text="Build Index", command=self.build_index); self.build_index_button.pack(side=tk.LEFT, padx=5)
-        self.cancel_button = ttk.Button(control_frame, text="Cancel", command=self.cancel_search, state=tk.DISABLED); self.cancel_button.pack(side=tk.LEFT)
-        self.analytics_button = ttk.Button(control_frame, text="Show Analytics", command=self.show_analytics, state=tk.DISABLED); self.analytics_button.pack(side=tk.LEFT, padx=5)
-        self.export_csv_button = ttk.Button(control_frame, text="Export CSV", command=self.export_csv, state=tk.DISABLED); self.export_csv_button.pack(side=tk.LEFT)
+        self.search_button = ttk.Button(control_frame, text=_("Start Search"), command=self.start_search); self.search_button.pack(side=tk.LEFT)
+        self.build_index_button = ttk.Button(control_frame, text=_("Build Index"), command=self.build_index); self.build_index_button.pack(side=tk.LEFT, padx=5)
+        self.cancel_button = ttk.Button(control_frame, text=_("Cancel"), command=self.cancel_search, state=tk.DISABLED); self.cancel_button.pack(side=tk.LEFT)
+        self.analytics_button = ttk.Button(control_frame, text=_("Show Analytics"), command=self.show_analytics, state=tk.DISABLED); self.analytics_button.pack(side=tk.LEFT, padx=5)
+        self.export_csv_button = ttk.Button(control_frame, text=_("Export CSV"), command=self.export_csv, state=tk.DISABLED); self.export_csv_button.pack(side=tk.LEFT)
         
         saved_search_frame = ttk.Frame(self.left_frame); saved_search_frame.grid(row=3, column=0, pady=5, sticky='w')
-        ttk.Label(saved_search_frame, text="Saved Searches:").pack(side=tk.LEFT, padx=(0,5))
+        ttk.Label(saved_search_frame, text=_("Saved Searches:")).pack(side=tk.LEFT, padx=(0,5))
         self.saved_searches_combo = ttk.Combobox(saved_search_frame, textvariable=self.selected_saved_search_var, font=('Segoe UI', 9), state='readonly')
         self.saved_searches_combo.pack(side=tk.LEFT)
         self.saved_searches_combo.bind('<<ComboboxSelected>>', self.load_saved_search)
-        ttk.Button(saved_search_frame, text="Save Current", command=self.save_current_search).pack(side=tk.LEFT, padx=5)
-        ttk.Button(saved_search_frame, text="Delete", command=self.delete_saved_search).pack(side=tk.LEFT)
+        ttk.Button(saved_search_frame, text=_("Save Current"), command=self.save_current_search).pack(side=tk.LEFT, padx=5)
+        ttk.Button(saved_search_frame, text=_("Delete"), command=self.delete_saved_search).pack(side=tk.LEFT)
 
         right_v_pane = ttk.PanedWindow(main_h_pane, orient=tk.VERTICAL); main_h_pane.add(right_v_pane, weight=3)
         results_frame_container = ttk.Frame(right_v_pane, padding=(10,0,0,0)); right_v_pane.add(results_frame_container, weight=3)
         results_frame_container.rowconfigure(0, weight=1); results_frame_container.columnconfigure(0, weight=1)
         self.results_tree = ttk.Treeview(results_frame_container, columns=('Path', 'Size', 'Modified'), show='headings', selectmode="extended")
-        self.results_tree.grid(row=0, column=0, sticky="nsew"); yscroll = ttk.Scrollbar(results_frame_container, orient=tk.VERTICAL, command=self.results_tree.yview)
-        yscroll.grid(row=0, column=1, sticky='ns'); self.results_tree.configure(yscrollcommand=yscroll.set)
-        self.results_tree.heading('#0', text='File Name'); self.results_tree.heading('Path', text='Full Path'); self.results_tree.heading('Size', text='Size'); self.results_tree.heading('Modified', text='Last Modified')
+        self.results_tree.grid(row=0, column=0, sticky="nsew")
+        yscroll = ttk.Scrollbar(results_frame_container, orient=tk.VERTICAL, command=self.results_tree.yview)
+        yscroll.grid(row=0, column=1, sticky='ns')
+        xscroll = ttk.Scrollbar(results_frame_container, orient=tk.HORIZONTAL, command=self.results_tree.xview)
+        xscroll.grid(row=1, column=0, sticky='ew')
+        self.results_tree.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
+        self.results_tree.heading('#0', text=_('File Name')); self.results_tree.heading('Path', text=_('Full Path')); self.results_tree.heading('Size', text=_('Size')); self.results_tree.heading('Modified', text=_('Last Modified'))
         self.results_tree.column('#0', width=250, stretch=tk.NO); self.results_tree.column('Path', width=500); self.results_tree.column('Size', width=100, stretch=tk.NO, anchor='e'); self.results_tree.column('Modified', width=150, stretch=tk.NO, anchor='center')
         self.results_tree.bind('<<TreeviewSelect>>', self.show_preview)
-        preview_container = ttk.LabelFrame(right_v_pane, text="Content Preview", padding=5); right_v_pane.add(preview_container, weight=2)
+        preview_container = ttk.LabelFrame(right_v_pane, text=_("Content Preview"), padding=5); right_v_pane.add(preview_container, weight=2)
         preview_container.rowconfigure(0, weight=1); preview_container.columnconfigure(0, weight=1)
         self.preview_pane = scrolledtext.ScrolledText(preview_container, wrap=tk.WORD, state="disabled", font=('Calibri', 10))
         self.preview_pane.grid(row=0, column=0, sticky="nsew")
@@ -191,23 +209,22 @@ class FileSearchGUI:
         self.find_entry = ttk.Entry(self.find_frame, width=30)
         self.find_entry.pack(side=tk.LEFT, padx=(0,5))
         self.find_entry.bind("<Return>", self.find_next_in_preview)
-        ttk.Button(self.find_frame, text="Find Next", command=self.find_next_in_preview).pack(side=tk.LEFT)
-        ttk.Button(self.find_frame, text="Close", command=self.hide_find_bar).pack(side=tk.LEFT, padx=5)
+        ttk.Button(self.find_frame, text=_("Find Next"), command=self.find_next_in_preview).pack(side=tk.LEFT)
+        ttk.Button(self.find_frame, text=_("Close"), command=self.hide_find_bar).pack(side=tk.LEFT, padx=5)
         self.results_menu = tk.Menu(self.root, tearoff=0)
-        self.results_menu.add_command(label="Open File Location", command=self.open_selected_folder)
-        self.results_menu.add_command(label="Copy Selected Path(s)", command=self.copy_selected_paths)
+        self.results_menu.add_command(label=_("Open File Location"), command=self.open_selected_folder)
+        self.results_menu.add_command(label=_("Copy Selected Path(s)"), command=self.copy_selected_paths)
         self.results_menu.add_separator()
-        self.results_menu.add_command(label="Move to...", command=self.move_selected)
-        self.results_menu.add_command(label="Copy to...", command=self.copy_selected)
-        self.results_menu.add_command(label="Compress to ZIP", command=self.compress_selected)
+        self.results_menu.add_command(label=_("Move to..."), command=self.move_selected)
+        self.results_menu.add_command(label=_("Copy to..."), command=self.copy_selected)
+        self.results_menu.add_command(label=_("Compress to ZIP"), command=self.compress_selected)
         self.results_menu.add_separator()
-        self.results_menu.add_command(label="Delete Permanently", command=self.delete_selected)
+        self.results_menu.add_command(label=_("Delete Permanently"), command=self.delete_selected)
         self.results_tree.bind("<Button-3>", self.show_context_menu)
         status_frame = ttk.Frame(self.root)
         status_frame.pack(side=tk.BOTTOM, fill=tk.X)
         self.progress_bar = ttk.Progressbar(status_frame, mode='indeterminate')
-        # Sembunyikan progress bar terlebih dahulu, baru akan dipanggil saat search berjalan
-        self.progress_bar.pack(side=tk.RIGHT, padx=5, pady=2)
+        self.progress_bar.pack_forget()
         status_bar = ttk.Label(status_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor='w', padding=(5, 2))
         status_bar.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
@@ -244,7 +261,33 @@ class FileSearchGUI:
         for theme_name in self.themes.keys():
             self.theme_menu.add_command(label=theme_name, command=lambda t=theme_name: self.apply_theme(t))
         self.theme_menu.add_separator()
-        self.theme_menu.add_command(label="Custom...", command=self.open_theme_editor)
+        self.theme_menu.add_command(label=_("Custom..."), command=self.open_theme_editor)
+        
+    def change_language(self, lang_code):
+        if lang_code != get_current_language():
+            self.settings_manager.save(self.get_settings_dict(language=lang_code))
+            messagebox.showinfo(_("Restart Required"), "Please restart the application to apply the language change.")
+            
+    def _on_lang_combo_changed(self, event=None):
+        selected_name = self.lang_var.get()
+        for code, name in get_languages().items():
+            if name == selected_name:
+                self.change_language(code)
+                break
+            
+    def get_settings_dict(self, language=None):
+        settings = {
+            'theme': self.selected_theme, 'history': self.search_history,
+            'case': self.case_sensitive_var.get(), 'whole': self.whole_word_var.get(), 
+            'regex': self.regex_var.get(), 'ocr': self.ocr_var.get(), 'semantic': self.semantic_var.get(), 
+            'ai_queue_size': self.ai_queue_size_var.get(), 'autosave': self.save_results_var.get(),
+            'ignore_folders': self.ignore_folders_var.get(), 'ignore_files': self.ignore_files_var.get(),
+            'saved_searches': self.saved_searches,
+            'language': language or get_current_language()
+        }
+        if self.selected_theme == "Custom":
+            settings['custom_theme'] = self.current_theme_dict
+        return settings
 
     def open_theme_editor(self):
         ThemeEditorWindow(self.root, self, self.icon_path)
@@ -279,6 +322,7 @@ class FileSearchGUI:
         self.cancel_event = threading.Event()
         self.search_button.config(state=tk.DISABLED); self.cancel_button.config(state=tk.NORMAL)
         self.analytics_button.config(state=tk.DISABLED)
+        self.progress_bar.pack(side=tk.RIGHT, padx=5, pady=2)
         self.progress_bar.start(15) # Mulai animasi loading
         self.clear_results()
         self.update_search_history(self.keyword_var.get())
@@ -334,6 +378,7 @@ class FileSearchGUI:
         self.search_running = False
         self.cancel_event.clear() ### PERBAIKAN: Reset event di akhir
         self.progress_bar.stop() # Hentikan animasi loading
+        self.progress_bar.pack_forget()
         self.search_button.config(state=tk.NORMAL); self.cancel_button.config(state=tk.DISABLED)
         if self.found_files_count > 0:
             self.analytics_button.config(state=tk.NORMAL)
@@ -463,18 +508,7 @@ class FileSearchGUI:
             self.apply_theme(theme_to_load)
 
     def save_settings(self):
-        settings = {
-            'theme': self.selected_theme, 'history': self.search_history,
-            'case': self.case_sensitive_var.get(), 'whole': self.whole_word_var.get(), 
-            'regex': self.regex_var.get(), 'ocr': self.ocr_var.get(), 'semantic': self.semantic_var.get(), 
-            'ai_queue_size': self.ai_queue_size_var.get(), 'autosave': self.save_results_var.get(),
-            'ignore_folders': self.ignore_folders_var.get(), 'ignore_files': self.ignore_files_var.get(),
-            'saved_searches': self.saved_searches
-        }
-        if self.selected_theme == "Custom":
-            settings['custom_theme'] = self.current_theme_dict
-        
-        self.settings_manager.save(settings)
+        self.settings_manager.save(self.get_settings_dict())
         
     def browse_folder(self):
         folder = filedialog.askdirectory(title="Select a Folder to Search", parent=self.root)
@@ -508,6 +542,28 @@ class FileSearchGUI:
             f"© {datetime.now().year} Xnuvers007 | All rights reserved\n\n"
             "For more information, visit our GitHub repository or contact us at:\n"
         )
+        
+    def check_for_updates(self):
+        def _check():
+            try:
+                url = "https://api.github.com/repos/Xnuvers007/file-search/releases/latest"
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    data = json.loads(response.read().decode())
+                    latest_version = data.get("tag_name", "")
+                    current_version = "v2.6.0"
+                    
+                    if latest_version.lower() > current_version.lower():
+                        msg = _("A new version ({}) is available! You are currently on {}.\n\nWould you like to download it now?").format(latest_version, current_version)
+                        if messagebox.askyesno(_("Update Available"), msg, parent=self.root):
+                            import webbrowser
+                            webbrowser.open(data.get("html_url", "https://github.com/Xnuvers007/file-search/releases/latest"))
+                    else:
+                        messagebox.showinfo(_("No Updates"), _("You are already using the latest version ({}).").format(current_version), parent=self.root)
+            except Exception as e:
+                messagebox.showerror(_("Error"), _("Failed to check for updates: {}").format(e), parent=self.root)
+                
+        threading.Thread(target=_check, daemon=True).start()
             
     def copy_selected_paths(self):
         selection = self.results_tree.selection()
@@ -550,7 +606,7 @@ class FileSearchGUI:
         
         self.preview_pane.config(state="normal")
         self.preview_pane.delete(1.0, tk.END)
-        self.preview_pane.insert(tk.END, f"Membaca dan merender teks dari file...\n\nNama File: {os.path.basename(file_path)}\n\nMohon tunggu sebentar, aplikasi mungkin akan freeze/macet sementara jika file berukuran besar...")
+        self.preview_pane.insert(tk.END, _("Membaca dan merender teks dari file...") + f"\n\nName: {os.path.basename(file_path)}\n\nPlease wait...")
         self.preview_pane.config(state="disabled")
         
         self.root.update_idletasks() 
@@ -559,7 +615,7 @@ class FileSearchGUI:
         
         self.preview_pane.config(state="normal")
         self.preview_pane.delete(1.0, tk.END)
-        self.preview_pane.insert(tk.END, content if content else "Cannot preview this file type or file is empty.")
+        self.preview_pane.insert(tk.END, content if content else _("Cannot preview this file type or file is empty."))
         
         if content:
             self._highlight_keyword(self.keyword_var.get())
@@ -764,8 +820,10 @@ class FileSearchGUI:
             finally:
                 self.root.after(0, lambda: self.build_index_button.config(state=tk.NORMAL))
                 self.root.after(0, self.progress_bar.stop)
+                self.root.after(0, self.progress_bar.pack_forget)
                 
         self.build_index_button.config(state=tk.DISABLED)
         self.status_var.set("Building index... This may take a while.")
+        self.progress_bar.pack(side=tk.RIGHT, padx=5, pady=2)
         self.progress_bar.start(15)
         threading.Thread(target=_index_thread, daemon=True).start()
